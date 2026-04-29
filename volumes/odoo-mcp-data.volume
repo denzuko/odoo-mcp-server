@@ -1,0 +1,10 @@
+# ~/.config/containers/systemd/odoo-mcp-data.volume
+# Persistent volume for odoo-mcp-server runtime data (logs, state)
+
+[Unit]
+Description=odoo-mcp-server data volume
+
+[Volume]
+VolumeName=odoo-mcp-data
+Label=app=odoo-mcp-server
+Label=component=mcp

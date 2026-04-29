@@ -1,0 +1,61 @@
+# ~/.config/containers/systemd/odoo-mcp.container
+# odoo-mcp-server — rootless Podman Quadlet (user-scoped systemd)
+#
+# Managed by: odoo-mcp service account
+# Unit scope:  systemctl --user
+# Install:     odoo_mcp_setup.sh (run as root, installs for service account)
+# Logs:        journalctl --user -u odoo-mcp.service -f
+#
+# After dropping this file as the service account:
+#   systemctl --user daemon-reload
+#   systemctl --user start odoo-mcp.service
+
+[Unit]
+Description=odoo-mcp-server — MCP bridge for Odoo 15+ XML-RPC
+Documentation=https://denzuko.github.io/odoo-mcp-server/
+After=network-online.target odoo-mcp-network.service
+Wants=network-online.target odoo-mcp-network.service
+
+[Container]
+ContainerName=odoo-mcp
+# Image built from this repo's Dockerfile and pushed to GHCR.
+# Tag is pinned by CI on each release; update via:
+#   podman pull ghcr.io/denzuko/odoo-mcp-server:latest
+Image=ghcr.io/denzuko/odoo-mcp-server:latest
+AutoUpdate=registry
+
+# Env file is installed alongside this unit by odoo_mcp_setup.sh.
+# Contains ODOO_URL, ODOO_DB, ODOO_USER, ODOO_API_KEY.
+# EnvironmentFile path is relative to the service account's quadlet dir.
+EnvironmentFile=%h/.config/containers/systemd/odoo-mcp.env
+
+# Isolated backend network
+Network=odoo-mcp.network
+
+# Bind only to loopback — HAProxy terminates TLS and proxies inbound.
+# For Cloudflare Workers WASM deploy, this container is not needed.
+# For native server deployment, HAProxy routes mcp.dapla.net/* here.
+PublishPort=127.0.0.1:8000:8000
+
+# Health probe — hits /healthz which tests live Odoo auth
+HealthCmd=curl -sf http://localhost:8000/healthz
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=30s
+
+# Security posture — rootless + belt-and-suspenders
+DropCapability=ALL
+NoNewPrivileges=true
+ReadOnly=true
+
+Label=app=odoo-mcp-server
+Label=component=mcp
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=60
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,13 @@
+# ~/.config/containers/systemd/odoo-mcp.network
+# odoo-mcp-server isolated backend network
+# mirrors fts-quadlet-setup network convention
+
+[Unit]
+Description=odoo-mcp-server internal network
+
+[Network]
+NetworkName=odoo-mcp
+Driver=bridge
+Subnet=10.89.3.0/24
+Gateway=10.89.3.1
+Label=app=odoo-mcp-server

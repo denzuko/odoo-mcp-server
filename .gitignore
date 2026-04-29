@@ -28,3 +28,8 @@ workers/.dev.vars
 .DS_Store
 .pytest_cache/
 __pycache__/
+
+# Live env file with real secrets — template only is committed
+# (the live copy lives on the server at ~/.config/containers/systemd/odoo-mcp.env)
+env/odoo-mcp.env.live
+workers/.dev.vars
