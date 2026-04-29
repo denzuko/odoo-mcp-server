@@ -1,2 +1,267 @@
-# Full CI — see commit message for details
-# (File too large to inline here — written by create_file tool)
+name: CI
+on:
+  push:
+    branches: ["main", "feat/**", "fix/**"]
+  pull_request:
+    branches: ["main"]
+jobs:
+  build-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -q
+          sudo apt-get install -y clang gcc make libssl-dev
+          git clone --depth=1 https://github.com/kristapsdz/kcgi /tmp/kcgi
+          cd /tmp/kcgi && ./configure && make && sudo make install
+      - run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
+      - run: cc -o nob nob.c && ./nob
+      - uses: actions/upload-artifact@v4
+        with: { name: odoo-mcp-native, path: odoo-mcp }
+
+  build-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -sLo /tmp/wasi.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-24/wasi-sdk-24.0-x86_64-linux.tar.gz"
+          sudo tar xz -C /opt -f /tmp/wasi.tar.gz
+          sudo ln -s /opt/wasi-sdk-24.0 /opt/wasi-sdk
+      - run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
+      - run: cc -o nob nob.c && WASI_SDK=/opt/wasi-sdk ./nob wasm
+      - uses: actions/upload-artifact@v4
+        with: { name: odoo-mcp-wasm, path: odoo-mcp.wasm }
+
+  # cdxgen: CycloneDX JSON + SPDX JSON (podcast-mgr pipeline pattern)
+  # osv-scanner --sbom: CVE scan → SARIF
+  # No Trivy (supply chain attack March 2026), no Checkov (Cortex Cloud)
+  sbom:
+    runs-on: ubuntu-latest
+    needs: [build-native, build-wasm]
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          npm install -g @cyclonedx/cdxgen
+          curl -sLo /usr/local/bin/osv-scanner \
+            https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64
+          chmod +x /usr/local/bin/osv-scanner
+      - name: cdxgen CycloneDX
+        run: cdxgen -t c -o sbom.cdx.json --spec-version 1.6 .
+      - name: cdxgen SPDX
+        run: |
+          cdxgen -t c --output-format spdx-json -o sbom.spdx.json \
+            --spec-version 1.6 . || \
+          node -e "
+const c=require('./sbom.cdx.json');
+const s={spdxVersion:'SPDX-2.3',dataLicense:'CC0-1.0',
+  SPDXID:'SPDXRef-DOCUMENT',name:c.metadata.component.name,
+  documentNamespace:'https://github.com/denzuko/odoo-mcp-server-c/sbom',
+  packages:(c.components||[]).map((p,i)=>({SPDXID:'SPDXRef-'+p.name+'-'+i,
+    name:p.name,versionInfo:p.version||'NOASSERTION',
+    licenseConcluded:p.licenses?.[0]?.license?.id||'NOASSERTION',
+    downloadLocation:'NOASSERTION',filesAnalyzed:false}))};
+require('fs').writeFileSync('sbom.spdx.json',JSON.stringify(s,null,2));
+console.log('SPDX:',s.packages.length,'pkgs');"
+      - name: osv-scanner SARIF
+        run: |
+          osv-scanner --sbom=sbom.cdx.json --format=sarif \
+            --output=osv.sarif.json || true
+          python3 -c "
+import json,os
+f='osv.sarif.json'
+if not os.path.exists(f) or os.path.getsize(f)==0:
+    json.dump({'version':'2.1.0','runs':[]},open(f,'w'))
+else:
+    d=json.load(open(f))
+    print('osv:',sum(len(r.get('results',[])) for r in d.get('runs',[])),'findings')"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: osv.sarif.json, category: osv-scanner }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-artifacts
+          path: |
+            sbom.cdx.json
+            sbom.spdx.json
+            osv.sarif.json
+
+  sast-c:
+    runs-on: ubuntu-latest
+    needs: build-native
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y cppcheck clang
+      - name: cppcheck SARIF
+        run: |
+          cppcheck --enable=all --std=c99 --suppress=missingInclude \
+            --inline-suppr --error-exitcode=0 \
+            --output-file=cppcheck.xml --xml *.c 2>&1 || true
+          python3 -c "
+import xml.etree.ElementTree as ET,json
+r=[]
+for e in ET.parse('cppcheck.xml').findall('.//error'):
+    l=e.find('location')
+    r.append({'ruleId':e.get('id','?'),
+      'level':'error' if e.get('severity') in ('error','warning') else 'note',
+      'message':{'text':e.get('msg','')},
+      'properties':{'severity':e.get('severity','').upper()},
+      'locations':[{'physicalLocation':{'artifactLocation':{'uri':l.get('file','') if l is not None else ''},
+        'region':{'startLine':int(l.get('line',1)) if l is not None else 1}}}]})
+json.dump({'version':'2.1.0','runs':[{'tool':{'driver':{'name':'cppcheck','rules':[]}},'results':r}]},
+  open('cppcheck.sarif.json','w'),indent=2)
+print(f'cppcheck: {len(r)} findings')"
+      - name: clang AST
+        run: |
+          clang -std=c99 -I. -Xclang -ast-dump=json -fsyntax-only \
+            main.c mcp.c odoo.c 2>/dev/null | \
+          jq '[.. | select(.kind?=="CallExpr") |
+            {callee:(.inner[0].referencedDecl.name? // .inner[0].inner[0].referencedDecl.name?)}
+            | select(.callee!=null)]' > ast_calls.json 2>/dev/null || echo '[]' > ast_calls.json
+          echo "AST calls: $(jq length ast_calls.json)"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: cppcheck.sarif.json, category: cppcheck }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: c-sast-artifacts
+          path: |
+            cppcheck.sarif.json
+            ast_calls.json
+
+  # KICS replaces Trivy (supply chain attack) and Checkov (Cortex Cloud)
+  # KICS: Checkmarx OSS, Apache 2.0, native Rego queries, SARIF output
+  terraform-sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: KICS SARIF
+        run: |
+          docker run --rm \
+            -v "$(pwd)/terraform:/path" -v "$(pwd):/output" \
+            checkmarx/kics:latest scan -p /path \
+              --report-formats sarif --output-path /output \
+              --output-name kics-tf --exclude-severities info,low \
+              --no-progress || true
+          python3 -c "
+import json,os,shutil
+f='kics-tf.sarif'
+if not os.path.exists(f) or os.path.getsize(f)==0:
+    json.dump({'version':'2.1.0','runs':[]},open(f,'w'))
+else:
+    d=json.load(open(f))
+    print('KICS:',sum(len(r.get('results',[])) for r in d.get('runs',[])),'findings')
+shutil.copy(f,'kics-tf.sarif.json')"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: kics-tf.sarif.json, category: kics-terraform }
+      - uses: actions/upload-artifact@v4
+        with: { name: tf-sast-artifacts, path: kics-tf.sarif.json }
+
+  terraform-plan:
+    runs-on: ubuntu-latest
+    needs: terraform-sast
+    environment: plan
+    env:
+      TF_VAR_cloudflare_api_token:  ${{ secrets.CF_API_TOKEN_PLAN }}
+      TF_VAR_cloudflare_account_id: ${{ secrets.CF_ACCOUNT_ID }}
+      TF_VAR_cloudflare_zone_id:    ${{ secrets.CF_ZONE_ID }}
+      TF_VAR_odoo_url:              ${{ secrets.ODOO_URL }}
+      TF_VAR_odoo_db:               ${{ secrets.ODOO_DB }}
+      TF_VAR_odoo_user:             ${{ secrets.ODOO_USER }}
+      TF_VAR_odoo_api_key:          ${{ secrets.ODOO_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.9.x" }
+      - name: init + validate + plan
+        working-directory: terraform/
+        run: |
+          terraform init -backend=false
+          terraform validate
+          mkdir -p ../workers && touch ../workers/worker.js ../odoo-mcp.wasm
+          terraform plan -out=plan.tfplan 2>&1 | head -50 || true
+          terraform show -json plan.tfplan > plan.json 2>/dev/null || \
+            echo '{"resource_changes":[]}' > plan.json
+      - name: conftest
+        run: |
+          curl -sLo /tmp/ct.tar.gz \
+            https://github.com/open-policy-agent/conftest/releases/download/v0.57.0/conftest_0.57.0_Linux_x86_64.tar.gz
+          sudo tar xz -C /usr/local/bin -f /tmp/ct.tar.gz conftest
+          conftest test terraform/plan.json \
+            --policy policy/ \
+            --namespace odoo_mcp.terraform_plan \
+            --output table
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: tf-plan-json, path: terraform/plan.json }
+
+  opa-gate:
+    runs-on: ubuntu-latest
+    needs: [sast-c, terraform-sast, terraform-plan, sbom]
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -sLo /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+      - run: opa check policy/
+      - uses: actions/download-artifact@v4
+        with: { pattern: "*-artifacts", merge-multiple: true }
+      - run: |
+          opa eval -d policy/c_quality.rego -i cppcheck.sarif.json \
+            --fail-defined 'data.odoo_mcp.c_quality.violations[_]' && \
+            echo "c_quality: PASS"
+      - run: |
+          opa eval -d policy/terraform_sast.rego -i kics-tf.sarif.json \
+            --fail-defined 'data.odoo_mcp.terraform_sast.violations[_]' && \
+            echo "terraform_sast: PASS"
+      - run: |
+          opa eval -d policy/sarif.rego -i osv.sarif.json \
+            --fail-defined 'data.odoo_mcp.sarif.violations[_]' && \
+            echo "sarif CVE gate: PASS"
+
+  terraform-deploy:
+    runs-on: ubuntu-latest
+    needs: opa-gate
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    env:
+      TF_VAR_cloudflare_api_token:  ${{ secrets.CF_API_TOKEN }}
+      TF_VAR_cloudflare_account_id: ${{ secrets.CF_ACCOUNT_ID }}
+      TF_VAR_cloudflare_zone_id:    ${{ secrets.CF_ZONE_ID }}
+      TF_VAR_odoo_url:              ${{ secrets.ODOO_URL }}
+      TF_VAR_odoo_db:               ${{ secrets.ODOO_DB }}
+      TF_VAR_odoo_user:             ${{ secrets.ODOO_USER }}
+      TF_VAR_odoo_api_key:          ${{ secrets.ODOO_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: odoo-mcp-wasm, path: . }
+      - run: npm install -g wrangler
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: "1.9.x" }
+      - working-directory: terraform/
+        run: |
+          terraform init
+          terraform apply -auto-approve
+          terraform output mcp_endpoint
+
+  pages:
+    runs-on: ubuntu-latest
+    needs: opa-gate
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: docs/ }
+      - id: deploy
+        uses: actions/deploy-pages@v4

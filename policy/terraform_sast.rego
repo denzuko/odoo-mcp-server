@@ -1,19 +1,19 @@
 # policy/terraform_sast.rego — Terraform HCL SAST gate
 #
-# Consumes SARIF 2.1.0 produced by:
-#   trivy config --format sarif --output trivy.sarif.json ./terraform/
-#   checkov -d terraform/ --output sarif > checkov.sarif.json
+# Input: SARIF 2.1.0 produced by KICS (Checkmarx/Open Source):
+#   kics scan -p terraform/ --report-formats sarif \
+#             --output-path . --output-name kics-tf
 #
-# Both tools scan HCL statically — no cloud creds needed, no plan required.
-# Trivy (successor to tfsec) catches Cloudflare-specific misconfigs.
-# Checkov adds compliance policy coverage (CIS, NIST, SOC2 mappings).
+# KICS uses native Rego queries internally and emits SARIF with
+# severity in result.properties.severity (HIGH/MEDIUM/LOW/INFO)
+# and CWE/compliance mappings in result.properties.
 #
-# Gate: any violation in blocked_checks or above severity_threshold
-# causes `opa eval --fail-defined` to exit non-zero, blocking CI.
+# Replaces Trivy (supply chain compromised, Aqua Security, March 2026)
+# and Checkov (absorbed into Cortex Cloud / Palo Alto Networks).
+# KICS is Checkmarx open-source, Apache 2.0, actively maintained,
+# no commercial lock-in, native Rego policy engine.
 #
-# Run:
-#   opa eval -d policy/terraform_sast.rego -i merged_tf.sarif.json \
-#     --fail-defined 'data.odoo_mcp.terraform_sast.violations[_]'
+# Gate: --fail-defined 'data.odoo_mcp.terraform_sast.violations[_]'
 #
 # Da Planet Security / denzuko <denzuko@dapla.net>
 # MIT License
@@ -25,39 +25,44 @@ import future.keywords.in
 
 # ── Severity threshold ──────────────────────────────────────────────── #
 
-# SARIF levels that hard-block CI
-blocked_levels := {"error"}
+# KICS maps severity into result.level (SARIF) and result.properties.severity
+blocked_levels     := {"error"}
+blocked_severities := {"HIGH", "CRITICAL"}
 
-# Checkov / Trivy check IDs that are unconditional hard-blocks
-# regardless of severity (security-critical for our CF Workers deployment)
-blocked_checks := {
-    # Secrets in plaintext — Checkov
-    "CKV_SECRET_6",       # hard-coded credentials
-    "CKV2_CF_1",          # Cloudflare: WAF not enabled on zone
-    "CKV2_CF_2",          # Cloudflare: HTTPS-only not enforced
-    "CKV2_CF_3",          # Cloudflare: minimum TLS version < 1.2
+# ── KICS query IDs that are unconditional blocks ─────────────────────── #
+# Full KICS query library: https://docs.kics.io/latest/queries/
+# Cloudflare-specific + general secrets/IaC hygiene
 
-    # Trivy / tfsec Cloudflare checks
-    "cloudflare-workers-no-plaintext-secrets",
-    "cloudflare-zone-enforce-https",
-    "cloudflare-zone-minimum-tls-version",
+blocked_queries := {
+    # Cloudflare — WAF / TLS / HTTPS
+    "cf-workers-plaintext-secret",     # secret in non-sensitive attribute
+    "cloudflare-zone-waf-disabled",    # WAF not enabled on zone
+    "cloudflare-zone-https-only",      # HTTPS-only not set
+    "cloudflare-zone-min-tls-version", # TLS < 1.2
 
-    # General IaC hygiene — always block
-    "AVD-GEN-0001",       # sensitive value in output (not marked sensitive)
-    "AVD-GEN-0002",       # hardcoded credentials in resource
+    # Secrets hygiene — KICS universal checks
+    "a9dfec39-a740-4105-bbd6-721ba163c053",  # passwords in variables
+    "e8c80448-31d8-4755-85fc-6dbab69c2717",  # sensitive output not marked sensitive
+    "d5e83b32-56dd-4247-b12e-9b4932234bf7",  # hardcoded credentials
+
+    # Terraform state hygiene
+    "d1646197-4d22-4de1-b84b-0e1f3e54fe4c",  # backend not configured
+    "1e434b25-8763-4b00-a5ca-ca03b7abbb66",  # no required_providers pinning
+
+    # local-exec security — our wrangler workaround must not leak tokens
+    "local-exec-sensitive-env",  # custom: sensitive vars in local-exec env
 }
 
-# ── Allowed exceptions ─────────────────────────────────────────────── #
-# Checks we explicitly accept for this deployment with documented rationale.
-# Format: set of ruleIds that should NOT produce violations.
+# ── Allowed exceptions ──────────────────────────────────────────────── #
+# Documented false positives for this specific deployment.
 
 allowed_exceptions := {
-    # worker_bundle.js contains inlined base64 WASM — not a secret.
-    # Trivy may flag the large base64 blob as a potential secret.
-    "trivy-cloudflare-wasm-base64-false-positive",
+    # Backend not configured: intentional for now (using local state in dev,
+    # GitHub Actions uses TF_BACKEND env — not a .tf file misconfiguration).
+    "d1646197-4d22-4de1-b84b-0e1f3e54fe4c",
 }
 
-# ── Violations ─────────────────────────────────────────────────────── #
+# ── Violations ──────────────────────────────────────────────────────── #
 
 violations[msg] if {
     run    := input.runs[_]
@@ -65,7 +70,7 @@ violations[msg] if {
     result.level in blocked_levels
     not result.ruleId in allowed_exceptions
     loc    := result.locations[0].physicalLocation
-    msg := sprintf("TF SAST error [%v] in %v:%v — %v",
+    msg := sprintf("TF SAST [error] %v in %v:%v — %v",
         [result.ruleId,
          loc.artifactLocation.uri,
          loc.region.startLine,
@@ -75,10 +80,25 @@ violations[msg] if {
 violations[msg] if {
     run    := input.runs[_]
     result := run.results[_]
-    result.ruleId in blocked_checks
+    sev    := object.get(result.properties, "severity", "")
+    sev    in blocked_severities
     not result.ruleId in allowed_exceptions
     loc    := result.locations[0].physicalLocation
-    msg := sprintf("TF SAST blocked check [%v] in %v:%v — %v",
+    msg := sprintf("TF SAST [%v] %v in %v:%v — %v",
+        [sev,
+         result.ruleId,
+         loc.artifactLocation.uri,
+         loc.region.startLine,
+         result.message.text])
+}
+
+violations[msg] if {
+    run    := input.runs[_]
+    result := run.results[_]
+    result.ruleId in blocked_queries
+    not result.ruleId in allowed_exceptions
+    loc    := result.locations[0].physicalLocation
+    msg := sprintf("TF SAST blocked query [%v] in %v:%v — %v",
         [result.ruleId,
          loc.artifactLocation.uri,
          loc.region.startLine,
@@ -90,4 +110,5 @@ violations[msg] if {
 summary := {
     "pass":            count(violations) == 0,
     "violation_count": count(violations),
+    "tool":            "kics",
 }
