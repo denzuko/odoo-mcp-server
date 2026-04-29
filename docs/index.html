@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>odoo-mcp-server — Da Planet Security</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── DA PLANET DESIGN TOKENS (canonical: klaxon.dapla.net / thelounge-theme-daplanet v1.0.8) ── */
+:root {
+  --green:      #39ff14;
+  --green2:     #00c853;
+  --amber:      #ffab00;
+  --red:        #ff1744;
+  --dim:        #0a0a0a;
+  --panel:      #0d1117;
+  --border:     #1f2937;
+  --muted:      #6b7280;
+  --text:       #d1fae5;
+  --text-dim:   #e5e7eb;
+  --font-mono:  'Share Tech Mono', 'Courier New', monospace;
+  --font-ui:    'Rajdhani', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--dim);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.65;
+  min-height: 100vh;
+}
+
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    0deg, transparent, transparent 2px,
+    rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+  pointer-events: none; z-index: 9999;
+}
+
+a { color: var(--green); text-decoration: none; }
+a:hover { color: #fff; text-decoration: underline; }
+
+.container { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
+
+/* ── HEADER ── */
+header {
+  border-bottom: 1px solid var(--green2);
+  padding: 2rem 0 1.5rem;
+  position: relative; overflow: hidden;
+}
+header::before {
+  content: 'ODOO::MCP';
+  position: absolute; right: -1rem; top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-ui); font-size: 8rem; font-weight: 700;
+  color: rgba(57,255,20,0.03); pointer-events: none; white-space: nowrap;
+}
+.logo-bracket {
+  font-family: var(--font-ui); font-size: 2.2rem; font-weight: 700;
+  color: var(--green); letter-spacing: -0.02em;
+}
+.logo-bracket span { color: var(--amber); }
+.tagline {
+  font-size: 0.75rem; color: var(--muted);
+  letter-spacing: 0.15em; text-transform: uppercase; margin-top: 0.4rem;
+}
+.header-badges { display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+.badge {
+  display: inline-block; border: 1px solid var(--border);
+  font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 0.2rem 0.55rem; color: var(--muted);
+}
+.badge-green { border-color: var(--green); color: var(--green); background: rgba(57,255,20,0.05); }
+.badge-amber { border-color: var(--amber); color: var(--amber); background: rgba(255,171,0,0.05); }
+
+/* ── NAV ── */
+nav { padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+.nav-inner { display: flex; gap: 2rem; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.nav-inner a { color: var(--muted); transition: color 0.15s; }
+.nav-inner a:hover { color: var(--green); text-decoration: none; }
+
+/* ── SECTIONS ── */
+section { padding: 3rem 0; border-bottom: 1px solid var(--border); }
+section:last-child { border-bottom: none; }
+
+h2 {
+  font-family: var(--font-ui); font-size: 1.4rem; font-weight: 700;
+  color: var(--text-dim); letter-spacing: 0.05em; text-transform: uppercase;
+  margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem;
+}
+h2::before { content: '//'; color: var(--green); font-family: var(--font-mono); font-size: 1rem; }
+h3 {
+  font-family: var(--font-ui); font-size: 1rem; font-weight: 600;
+  color: var(--amber); letter-spacing: 0.08em; text-transform: uppercase;
+  margin-bottom: 0.75rem;
+}
+p { color: var(--text); margin-bottom: 1rem; line-height: 1.7; }
+
+/* ── STAT GRID ── */
+.stat-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px; background: var(--border); border: 1px solid var(--border);
+  margin-bottom: 2rem;
+}
+.stat-cell { background: var(--panel); padding: 1.25rem 1rem; text-align: center; }
+.stat-val {
+  font-family: var(--font-ui); font-size: 2rem; font-weight: 700;
+  color: var(--green); display: block; line-height: 1; margin-bottom: 0.3rem;
+}
+.stat-label { font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+
+/* ── TOOL CARDS ── */
+.tool-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 1px; background: var(--border); border: 1px solid var(--border);
+}
+.tool-card {
+  background: var(--panel); padding: 1.5rem;
+  position: relative; transition: background 0.15s;
+}
+.tool-card:hover { background: #111820; }
+.tool-card::before {
+  content: ''; position: absolute; top: 0; left: 0;
+  width: 3px; height: 100%; background: var(--green);
+  opacity: 0; transition: opacity 0.15s;
+}
+.tool-card:hover::before { opacity: 1; }
+.tool-name { font-family: var(--font-mono); font-size: 0.85rem; color: var(--green); margin-bottom: 0.4rem; }
+.tool-sig {
+  font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted);
+  margin-bottom: 0.75rem; border-left: 2px solid var(--border); padding-left: 0.75rem;
+}
+.tool-desc { font-size: 0.8rem; color: var(--text); line-height: 1.6; }
+
+/* ── CODE ── */
+pre, code { font-family: var(--font-mono); font-size: 0.8rem; }
+pre {
+  background: var(--panel); border: 1px solid var(--border);
+  border-left: 3px solid var(--green); padding: 1.25rem 1.5rem;
+  overflow-x: auto; margin-bottom: 1.25rem; color: var(--text);
+  position: relative;
+}
+pre .cmt { color: var(--muted); }
+pre .kw  { color: var(--amber); }
+pre .str { color: var(--green2); }
+.pre-label {
+  font-size: 0.55rem; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 0.5rem; display: block;
+}
+.copy-btn {
+  position: absolute; top: 0.6rem; right: 0.6rem;
+  background: var(--border); border: 1px solid var(--muted);
+  color: var(--muted); font-family: var(--font-mono);
+  font-size: 0.6rem; padding: 0.2rem 0.5rem; cursor: pointer;
+  transition: all 0.15s; letter-spacing: 0.1em;
+}
+.copy-btn:hover { background: var(--green); color: var(--dim); border-color: var(--green); }
+.copy-btn.copied { background: var(--green2); color: var(--dim); border-color: var(--green2); }
+
+/* ── FLOW ── */
+.flow {
+  display: flex; align-items: center; gap: 0;
+  flex-wrap: wrap; margin: 1.5rem 0; font-size: 0.75rem;
+}
+.flow-node {
+  border: 1px solid var(--border); background: var(--panel);
+  padding: 0.6rem 1rem; white-space: nowrap;
+}
+.flow-node.green { border-color: var(--green); color: var(--green); }
+.flow-node.amber { border-color: var(--amber); color: var(--amber); }
+.flow-arrow { color: var(--muted); padding: 0 0.3rem; font-size: 0.7rem; }
+
+/* ── DEPLOY TABLE ── */
+.deploy-grid {
+  display: grid; grid-template-columns: 160px 1fr 80px;
+  gap: 1px; background: var(--border); border: 1px solid var(--border);
+  font-size: 0.78rem; margin-bottom: 1.5rem;
+}
+.deploy-cell { background: var(--panel); padding: 0.9rem 1rem; }
+.deploy-row:first-child .deploy-cell {
+  background: #0d1117; color: var(--muted);
+  font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase;
+}
+.deploy-platform { color: var(--amber); }
+.status-yes { color: var(--green); }
+.status-no  { color: var(--red); }
+.status-maybe { color: var(--amber); }
+
+/* ── ALERT ── */
+.alert {
+  border: 1px solid var(--amber); background: rgba(255,171,0,0.04);
+  padding: 1rem 1.25rem; margin-bottom: 1.5rem; font-size: 0.8rem;
+  position: relative;
+}
+.alert::before {
+  content: '⚠ NOTE'; display: block; font-size: 0.6rem;
+  letter-spacing: 0.2em; color: var(--amber); margin-bottom: 0.4rem;
+}
+
+/* ── POLICY TABLE ── */
+.policy-grid {
+  display: grid; grid-template-columns: 220px 1fr;
+  gap: 1px; background: var(--border); border: 1px solid var(--border);
+  font-size: 0.78rem; margin-bottom: 1.5rem;
+}
+.policy-cell { background: var(--panel); padding: 0.9rem 1rem; }
+.policy-row:first-child .policy-cell {
+  background: #0d1117; color: var(--muted);
+  font-size: 0.6rem; letter-spacing: 0.15em; text-transform: uppercase;
+}
+.policy-name { font-family: var(--font-mono); color: var(--green); font-size: 0.8rem; }
+
+/* ── FOOTER ── */
+footer {
+  padding: 2rem 0; border-top: 1px solid var(--border);
+  font-size: 0.7rem; color: var(--muted);
+  display: flex; justify-content: space-between;
+  align-items: center; flex-wrap: wrap; gap: 1rem;
+}
+.footer-logo { font-family: var(--font-ui); font-weight: 700; color: var(--green); font-size: 0.9rem; }
+
+@media (max-width: 640px) {
+  .tool-grid, .deploy-grid, .policy-grid { grid-template-columns: 1fr; }
+  header::before { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <div class="logo-bracket">[ odoo<span>-mcp-</span>server ]</div>
+  <div class="tagline">Da Planet Security &nbsp;·&nbsp; C99/BCHS MCP server for Odoo 15+ XML-RPC</div>
+  <div class="header-badges">
+    <span class="badge badge-green">v1.2.0</span>
+    <span class="badge badge-green">C99</span>
+    <span class="badge badge-green">nob.h build</span>
+    <span class="badge badge-amber">OPA / Rego gates</span>
+    <span class="badge badge-amber">CycloneDX + SPDX</span>
+    <span class="badge badge-amber">KICS SAST</span>
+    <span class="badge">MIT License</span>
+    <span class="badge">WASM + native</span>
+  </div>
+</header>
+
+<nav>
+  <div class="nav-inner">
+    <a href="#overview">Overview</a>
+    <a href="#tools">Tools</a>
+    <a href="#build">Build</a>
+    <a href="#deploy">Deploy</a>
+    <a href="#policy">Policy</a>
+    <a href="https://github.com/denzuko/odoo-mcp-server">GitHub →</a>
+  </div>
+</nav>
+
+<!-- OVERVIEW -->
+<section id="overview">
+  <div class="stat-grid">
+    <div class="stat-cell"><span class="stat-val">4</span><span class="stat-label">MCP Tools</span></div>
+    <div class="stat-cell"><span class="stat-val">2</span><span class="stat-label">Build Targets</span></div>
+    <div class="stat-cell"><span class="stat-val">4</span><span class="stat-label">Rego Gates</span></div>
+    <div class="stat-cell"><span class="stat-val">0</span><span class="stat-label">Runtime Deps</span></div>
+    <div class="stat-cell"><span class="stat-val">1</span><span class="stat-label">#ifdef</span></div>
+  </div>
+
+  <h2>What this is</h2>
+  <p>A <strong style="color:var(--green)">Model Context Protocol</strong> server written in C99 using the BCHS stack (BSD, C, Hypermedia, SQL). Connects any MCP-capable LLM to your Odoo 15/16/17 instance over its native XML-RPC API.</p>
+  <p>One source tree produces two artifacts from a single <code>nob.c</code> build driver — a native FreeBSD ELF binary and a <code>wasm32-wasi</code> module for Cloudflare Workers. The only platform-specific code is a single <code>#ifdef __wasm__</code> in <code>net.h</code>.</p>
+
+  <div class="flow">
+    <div class="flow-node green">Claude Desktop</div>
+    <div class="flow-arrow">─ stdio/HTTP ─▶</div>
+    <div class="flow-node">odoo-mcp-server (ELF)</div>
+    <div class="flow-arrow">─ XML-RPC ─▶</div>
+    <div class="flow-node amber">dapla.net Odoo</div>
+  </div>
+  <div class="flow">
+    <div class="flow-node green">Claude.ai / online LLM</div>
+    <div class="flow-arrow">─ HTTPS/MCP ─▶</div>
+    <div class="flow-node">CF Workers + odoo-mcp.wasm</div>
+    <div class="flow-arrow">─ XML-RPC ─▶</div>
+    <div class="flow-node amber">dapla.net Odoo</div>
+  </div>
+</section>
+
+<!-- TOOLS -->
+<section id="tools">
+  <h2>MCP Tools</h2>
+  <div class="tool-grid">
+    <div class="tool-card">
+      <div class="tool-name">search_read_records</div>
+      <div class="tool-sig">model, domain?, fields?, limit?, offset?, order?</div>
+      <div class="tool-desc">Search any Odoo model with an optional domain filter and return specified fields. Limit capped at 500. Supports pagination and sort order.</div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-name">get_model_fields</div>
+      <div class="tool-sig">model, attributes?</div>
+      <div class="tool-desc">Introspect the field schema for any Odoo model via <code>fields_get</code>. Returns field names, types, labels, and required flags. Use before querying an unfamiliar model.</div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-name">create_record</div>
+      <div class="tool-sig">model, values{}</div>
+      <div class="tool-desc">Create a new record in any Odoo model. Returns the new integer ID. Empty values dict is rejected before the RPC call.</div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-name">update_record</div>
+      <div class="tool-sig">model, record_ids[], values{}</div>
+      <div class="tool-desc">Write field values to one or more records. Supports bulk update by passing multiple IDs. Both IDs and values are validated before the call.</div>
+    </div>
+  </div>
+</section>
+
+<!-- BUILD -->
+<section id="build">
+  <h2>Build</h2>
+
+  <h3>Prerequisites</h3>
+  <p>FreeBSD/BSD: <code>pkg install kcgi libressl</code> &nbsp;·&nbsp; wasi-sdk for WASM target &nbsp;·&nbsp; <code>cc</code> (clang or gcc)</p>
+
+  <h3>Native ELF</h3>
+  <span class="pre-label">shell</span>
+  <pre id="pre-native"><button class="copy-btn" onclick="copyPre('pre-native')">COPY</button><span class="cmt"># Bootstrap the build driver once</span>
+cc -o nob nob.c
+
+<span class="cmt"># Build native FreeBSD binary</span>
+./nob
+
+<span class="cmt"># Run</span>
+<span class="kw">export</span> ODOO_URL=https://dapla.net
+<span class="kw">export</span> ODOO_DB=your_db
+<span class="kw">export</span> ODOO_USER=you@dapla.net
+<span class="kw">export</span> ODOO_API_KEY=your_api_key
+./odoo-mcp-server</pre>
+
+  <h3>WASM (Cloudflare Workers)</h3>
+  <span class="pre-label">shell</span>
+  <pre id="pre-wasm"><button class="copy-btn" onclick="copyPre('pre-wasm')">COPY</button><span class="cmt"># Build WASM module</span>
+<span class="kw">export</span> WASI_SDK=/opt/wasi-sdk
+./nob wasm
+<span class="cmt"># → odoo-mcp.wasm</span>
+
+<span class="cmt"># Deploy via Terraform (wrangler called via local-exec)</span>
+cd terraform/
+terraform init && terraform apply</pre>
+
+  <h3>The single #ifdef boundary</h3>
+  <span class="pre-label">net.h</span>
+  <pre id="pre-ifdef"><button class="copy-btn" onclick="copyPre('pre-ifdef')">COPY</button><span class="cmt">/* Only this file knows about the target */</span>
+<span class="kw">#ifdef</span> __wasm__
+  <span class="cmt">/* CF Worker JS shim exports http_fetch → Workers fetch() */</span>
+  __attribute__((import_module(<span class="str">"env"</span>), import_name(<span class="str">"http_fetch"</span>)))
+  extern int wasm_http_fetch(...);
+  #define net_http_post(...) wasm_http_fetch(...)
+<span class="kw">#else</span>
+  <span class="cmt">/* BSD sockets + libtls — implemented in net.c */</span>
+  int net_http_post(...);
+<span class="kw">#endif</span></pre>
+</section>
+
+<!-- DEPLOY -->
+<section id="deploy">
+  <h2>Deployment</h2>
+
+  <div class="alert">
+    stdio/local works out of the box. For Claude.ai and other online LLMs the WASM module runs on Cloudflare Workers behind your dapla.net WAF rules.
+  </div>
+
+  <div class="deploy-grid">
+    <div class="deploy-row">
+      <div class="deploy-cell">Platform</div>
+      <div class="deploy-cell">Notes</div>
+      <div class="deploy-cell">Status</div>
+    </div>
+    <div class="deploy-row">
+      <div class="deploy-cell deploy-platform">Cloudflare Workers</div>
+      <div class="deploy-cell">WASM target via wasi-sdk. Terraform <code>cloudflare_worker</code> + <code>local-exec wrangler</code> until provider issue #6852 (wasm_module) is fixed. Lives at WAF layer — rate limiting, Bot Management, Zero Trust all apply.</div>
+      <div class="deploy-cell status-yes">✓ Primary</div>
+    </div>
+    <div class="deploy-row">
+      <div class="deploy-cell deploy-platform">FreeBSD jail (dapla.net)</div>
+      <div class="deploy-cell">Native ELF behind HAProxy. Same jail pattern as OPDS server. <code>pledge</code>/<code>capsicum</code> sandbox, no WASM runtime needed.</div>
+      <div class="deploy-cell status-yes">✓ Local</div>
+    </div>
+    <div class="deploy-row">
+      <div class="deploy-cell deploy-platform">GCP Cloud Run</div>
+      <div class="deploy-cell">Native ELF in scratch container. <code>cloudbuild.yaml</code> not included — use the Dockerfile pattern and GCP Secret Manager for credentials.</div>
+      <div class="deploy-cell status-maybe">~ Fallback</div>
+    </div>
+  </div>
+
+  <h3>Environment variables</h3>
+  <pre id="pre-env"><button class="copy-btn" onclick="copyPre('pre-env')">COPY</button>ODOO_URL=https://dapla.net   <span class="cmt"># base URL, no trailing slash</span>
+ODOO_DB=your_database_name    <span class="cmt"># Odoo database name</span>
+ODOO_USER=you@dapla.net       <span class="cmt"># login email</span>
+ODOO_API_KEY=your_api_key     <span class="cmt"># Settings → Technical → API Keys</span></pre>
+
+  <h3>Claude Desktop config</h3>
+  <span class="pre-label">~/Library/Application Support/Claude/claude_desktop_config.json</span>
+  <pre id="pre-claude"><button class="copy-btn" onclick="copyPre('pre-claude')">COPY</button>{
+  <span class="str">"mcpServers"</span>: {
+    <span class="str">"odoo"</span>: {
+      <span class="str">"command"</span>: <span class="str">"/path/to/odoo-mcp-server"</span>,
+      <span class="str">"env"</span>: {
+        <span class="str">"ODOO_URL"</span>:     <span class="str">"https://dapla.net"</span>,
+        <span class="str">"ODOO_DB"</span>:      <span class="str">"your_db"</span>,
+        <span class="str">"ODOO_USER"</span>:    <span class="str">"you@dapla.net"</span>,
+        <span class="str">"ODOO_API_KEY"</span>: <span class="str">"your_api_key"</span>
+      }
+    }
+  }
+}</pre>
+</section>
+
+<!-- POLICY -->
+<section id="policy">
+  <h2>Policy gates</h2>
+
+  <p>All four Rego policies evaluated by OPA before any deploy. Every gate uses <code>--fail-defined violations[_]</code> — any finding blocks CI.</p>
+
+  <div class="policy-grid">
+    <div class="policy-row">
+      <div class="policy-cell">Policy</div>
+      <div class="policy-cell">Input / blocks</div>
+    </div>
+    <div class="policy-row">
+      <div class="policy-cell"><span class="policy-name">c_quality.rego</span></div>
+      <div class="policy-cell">cppcheck SARIF. Blocks: null-deref, buffer OOB, use-after-free, uninit reads, format-string injection, banned APIs (strcpy/gets/sprintf/rand), style violations.</div>
+    </div>
+    <div class="policy-row">
+      <div class="policy-cell"><span class="policy-name">terraform_sast.rego</span></div>
+      <div class="policy-cell">KICS SARIF (replaces Trivy/Checkov). Blocks: WAF disabled, HTTPS not enforced, TLS &lt; 1.2, hardcoded credentials, plaintext secrets.</div>
+    </div>
+    <div class="policy-row">
+      <div class="policy-cell"><span class="policy-name">terraform_plan.rego</span></div>
+      <div class="policy-cell">terraform plan JSON via conftest. Blocks: sensitive fields not marked sensitive, route outside mcp.dapla.net, compat date &lt; 2024, Worker name violation, secret destroy without approval label.</div>
+    </div>
+    <div class="policy-row">
+      <div class="policy-cell"><span class="policy-name">sarif.rego</span></div>
+      <div class="policy-cell">osv-scanner SARIF (from cdxgen CycloneDX SBOM). Blocks: CVE CVSS ≥ 7.0.</div>
+    </div>
+  </div>
+
+  <h3>SBOM</h3>
+  <p>cdxgen produces <code>sbom.cdx.json</code> (CycloneDX 1.6) and <code>sbom.spdx.json</code> (SPDX 2.3) on every CI run. osv-scanner ingests the CycloneDX SBOM for CVE scanning.</p>
+
+  <div class="flow">
+    <div class="flow-node green">build-native</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node green">build-wasm</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">cdxgen SBOM</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">osv-scanner</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">cppcheck</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">KICS</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">conftest</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node amber">OPA gate</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node amber">tf apply</div>
+  </div>
+
+  <br>
+  <p>
+    <a href="https://github.com/denzuko/odoo-mcp-server">GitHub</a> &nbsp;·&nbsp;
+    <a href="https://github.com/denzuko/odoo-mcp-server/releases">Releases</a> &nbsp;·&nbsp;
+    <a href="https://github.com/denzuko/odoo-mcp-server/actions">CI</a> &nbsp;·&nbsp;
+    <a href="https://github.com/denzuko/odoo-mcp-server/security">Security</a>
+  </p>
+</section>
+
+</div>
+
+<footer>
+  <div class="container" style="display:flex;justify-content:space-between;align-items:center;width:100%;flex-wrap:wrap;gap:1rem;">
+    <span class="footer-logo">[ Da Planet Security ]</span>
+    <span>odoo-mcp-server v1.2.0 &nbsp;·&nbsp; MIT &nbsp;·&nbsp; <a href="https://dapla.net">dapla.net</a></span>
+    <span style="color:var(--muted)">denzuko@dapla.net</span>
+  </div>
+</footer>
+
+<script>
+function copyPre(id) {
+  const pre = document.getElementById(id);
+  const text = pre.innerText.replace(/^COPY\n/, '');
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = pre.querySelector('.copy-btn');
+    btn.textContent = 'COPIED'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'COPY'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+</script>
+</body>
+</html>
