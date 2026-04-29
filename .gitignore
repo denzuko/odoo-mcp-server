@@ -1,0 +1,7 @@
+nob
+odoo-mcp
+odoo-mcp.wasm
+*.o
+clang-tidy-fixes.yaml
+*.sarif.json
+sbom.json
