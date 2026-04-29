@@ -1,0 +1,31 @@
+# CODEOWNERS
+* @denzuko
+
+# Source
+main.c    @denzuko
+mcp.c     @denzuko
+mcp.h     @denzuko
+odoo.c    @denzuko
+odoo.h    @denzuko
+net.c     @denzuko
+net.h     @denzuko
+json.h    @denzuko
+arena.h   @denzuko
+sv.h      @denzuko
+config.h  @denzuko
+nob.c     @denzuko
+nob.h     @denzuko
+
+# Workers
+workers/  @denzuko
+
+# Terraform
+terraform/ @denzuko
+
+# Policy — gate changes require review
+policy/    @denzuko
+
+# Documentation
+README.md    @denzuko
+CLAUDE.md    @denzuko
+docs/        @denzuko

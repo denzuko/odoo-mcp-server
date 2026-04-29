@@ -1,0 +1,16 @@
+# conftest.toml — conftest configuration for odoo-mcp-server policy checks
+#
+# Run all policies:
+#   terraform show -json plan.tfplan > terraform/plan.json
+#   conftest test terraform/plan.json
+
+[runner]
+  policy   = ["policy"]
+  output   = "table"
+  no_fail  = false
+
+[[policies]]
+  name      = "Terraform plan gate"
+  policy    = "policy/terraform_plan.rego"
+  namespace = "odoo_mcp.terraform_plan"
+  input     = "terraform/plan.json"

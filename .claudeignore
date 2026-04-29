@@ -1,0 +1,30 @@
+# .claudeignore — files Claude should not read or surface in context
+
+# Security artefacts — regenerate before use, do not treat as authoritative
+sbom.cdx.json
+sbom.spdx.json
+osv.sarif.json
+cppcheck.sarif.json
+kics-tf.sarif.json
+ast_calls.json
+
+# Build output
+nob
+odoo-mcp
+odoo-mcp.wasm
+*.o
+
+# Terraform state — never surface secrets
+terraform/.terraform/
+terraform/plan.tfplan
+terraform/plan.json
+terraform/*.tfstate
+terraform/*.tfstate.backup
+
+# Vendored headers — read upstream source instead
+nob.h
+
+# Editor/OS noise
+*.swp
+*~
+.DS_Store

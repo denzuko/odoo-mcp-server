@@ -1,0 +1,34 @@
+#!/bin/sh
+# .githooks/post-checkout
+#
+# Compiles nob.c and runs ./nob on the initial clone.
+# Activate: git config core.hooksPath .githooks
+#
+# The three arguments passed by git:
+#   $1 — previous HEAD (all zeros on initial checkout)
+#   $2 — new HEAD
+#   $3 — 1 = branch checkout, 0 = file checkout
+
+PREV_HEAD="$1"
+IS_BRANCH_CHECKOUT="$3"
+
+# Only run on initial clone (prev HEAD is all zeros) and branch checkouts
+[ "$IS_BRANCH_CHECKOUT" = "1" ] || exit 0
+[ "$PREV_HEAD" = "0000000000000000000000000000000000000000" ] || exit 0
+
+echo "post-checkout: initial clone detected — bootstrapping build"
+
+if ! command -v cc >/dev/null 2>&1; then
+    echo "post-checkout: cc not found — skipping nob bootstrap"
+    exit 0
+fi
+
+cc -o nob nob.c && echo "post-checkout: nob compiled" || {
+    echo "post-checkout: nob compile failed"
+    exit 1
+}
+
+./nob && echo "post-checkout: odoo-mcp-server built" || {
+    echo "post-checkout: ./nob failed — check deps (kcgi, libtls)"
+    exit 1
+}

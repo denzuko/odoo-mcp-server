@@ -1,0 +1,14 @@
+# Git Hooks
+
+Activate after cloning:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+## post-checkout
+
+Detects the initial clone (previous HEAD = all zeros) and automatically
+compiles `nob.c` then runs `./nob` to produce `odoo-mcp-server`.
+
+Requires: `cc`, `kcgi`, `libtls` (FreeBSD: `pkg install kcgi libressl`)
