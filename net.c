@@ -8,6 +8,10 @@
  */
 #ifndef __wasm__
 
+/* POSIX.1-2008 required for struct addrinfo, getaddrinfo, gai_strerror
+ * on Linux. Must be defined before any system header is included. */
+#define _POSIX_C_SOURCE 200809L
+
 #include "net.h"
 #include "sv.h"
 
