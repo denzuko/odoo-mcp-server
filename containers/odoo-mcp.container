@@ -51,6 +51,17 @@ ReadOnly=true
 
 Label=app=odoo-mcp-server
 Label=component=mcp
+Label=net.matrix.organization=Private Ops
+Label=net.matrix.orgunit=Matrix NOC
+Label=net.matrix.commonname=odoo-mcp
+Label=net.matrix.environment=production
+Label=net.matrix.application=odoo-mcp-server
+Label=net.matrix.role=mcp-gateway
+Label=net.matrix.owner=FC13F74B@matrix.net
+Label=net.matrix.customer=PVT-01
+Label=net.matrix.costcenter=INT-01
+Label=net.matrix.oid=iso.org.dod.internet.42387
+Label=net.matrix.duns=iso.org.duns.039271257
 
 [Service]
 Restart=on-failure

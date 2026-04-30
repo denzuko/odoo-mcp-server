@@ -193,3 +193,37 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Creates a labelled GitHub Issue with run URL and commit SHA when any
   job fails. Labels: bug + ci (+ security for sast/opa jobs,
   + production for terraform-deploy).
+
+---
+
+## [1.9.0] — 2026-04-30
+
+### Changed
+
+- arena.h — replaced hand-rolled implementation with vendored
+  tsoding/arena.h (MIT, Alexey Kutepov). Real API:
+  `Arena a = {0}` zero-init (no arena_new), Region linked-list
+  grows on demand, `arena_snapshot`/`arena_rewind` for per-request
+  scope (not arena_reset). `ARENA_IMPLEMENTATION` defined in main.c.
+
+- rc.h — vendored tsoding/rc.h. `rc_alloc`, `rc_acquire`,
+  `rc_release`, `rc_count`. Used for shared ownership across request
+  boundaries. `RC_IMPLEMENTATION` defined in main.c.
+
+- main.c: `Arena root = {0}` / `Arena a = {0}` zero-init pattern.
+  `Arena_Mark req_mark = arena_snapshot(&a)` saved after registry
+  init; `arena_rewind(&a, req_mark)` replaces arena_reset per
+  request. `ARENA_IMPLEMENTATION` + `RC_IMPLEMENTATION` defined here.
+
+- net.matrix label schema applied to all assets:
+    Dockerfile (OCI LABEL), containers/odoo-mcp.container (quadlet
+    Label=), networks/odoo-mcp.network, volumes/odoo-mcp-data.volume,
+    terraform/main.tf (cloudflare_worker tags).
+  Labels: organization, orgunit, commonname, environment, application,
+  role, owner, customer, costcenter, oid, duns.
+
+- LICENSE.txt: rc.h added to vendored section.
+
+- CLAUDE.md: arena/rc patterns documented with correct API, net.matrix
+  schema documented, static data pattern documented (enum+struct on
+  root arena, no static const char[] JSON).

@@ -8,3 +8,5 @@ Description=odoo-mcp-server data volume
 VolumeName=odoo-mcp-data
 Label=app=odoo-mcp-server
 Label=component=mcp
+Label=net.matrix.orgunit=Matrix NOC
+Label=net.matrix.costcenter=INT-01

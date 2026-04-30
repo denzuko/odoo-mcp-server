@@ -10,6 +10,13 @@
  */
 #ifndef __wasm__   /* native only — WASM target uses worker.js instead */
 
+/* tsoding/arena.h and tsoding/rc.h implementations live here —
+ * exactly one translation unit defines these. */
+#define ARENA_IMPLEMENTATION
+#define RC_IMPLEMENTATION
+#include "arena.h"
+#include "rc.h"
+
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -20,13 +27,11 @@
 #include <kcgijson.h>
 
 #include "config.h"
-#include "arena.h"
 #include "mcp.h"
 #include "odoo.h"
 
 #define REQ_MAX    (256 * 1024)   /* 256 KiB max inbound MCP request */
 #define RESP_MAX   (512 * 1024)   /* 512 KiB max outbound response    */
-#define ARENA_SIZE (4 * 1024 * 1024) /* 4 MiB per-request arena       */
 
 /* ── kcgi page/key tables ────────────────────────────────────────────────── */
 
@@ -122,13 +127,16 @@ int main(void)
 {
     Config          cfg  = config_load();
     OdooCtx         ctx  = { &cfg, 0 };
-    /* Root arena: long-lived, holds registry strings, never reset */
-    Arena           root = arena_new(64 * 1024);
-    /* Per-request arena: reset each iteration */
-    Arena           a    = arena_new(ARENA_SIZE);
+    /* Root arena: long-lived, holds registry strings, never rewound */
+    Arena           root = {0};
+    /* Per-request arena: rewound to mark after each request */
+    Arena           a    = {0};
     McpToolRegistry reg  = {0};
 
     mcp_registry_init(&reg, &root);
+
+    /* Snapshot the request arena after registry init — rewind here each request */
+    Arena_Mark      req_mark = arena_snapshot(&a);
 
     struct kreq r;
     struct kfcgi *fcgi = NULL;
@@ -148,7 +156,7 @@ int main(void)
 
         if (KCGI_OK != ke) break;
 
-        arena_reset(&a);   /* recycle per-request arena */
+        arena_rewind(&a, req_mark);   /* rewind per-request arena */
 
         switch (r.page) {
         case PAGE_MCP:     handle_mcp    (&r, &ctx, &reg, &a); break;

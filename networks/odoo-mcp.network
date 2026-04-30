@@ -11,3 +11,5 @@ Driver=bridge
 Subnet=10.89.3.0/24
 Gateway=10.89.3.1
 Label=app=odoo-mcp-server
+Label=net.matrix.orgunit=Matrix NOC
+Label=net.matrix.costcenter=INT-01

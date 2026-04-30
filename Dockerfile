@@ -39,7 +39,18 @@ LABEL org.opencontainers.image.title="odoo-mcp-server" \
       org.opencontainers.image.description="MCP server for Odoo 15+ XML-RPC — C99/BCHS" \
       org.opencontainers.image.source="https://github.com/denzuko/odoo-mcp-server" \
       org.opencontainers.image.licenses="BSD-2-Clause" \
-      maintainer="denzuko@dapla.net"
+      maintainer="denzuko@dapla.net" \
+      net.matrix.organization="Private Ops" \
+      net.matrix.orgunit="Matrix NOC" \
+      net.matrix.commonname="odoo-mcp-server" \
+      net.matrix.environment="production" \
+      net.matrix.application="odoo-mcp-server" \
+      net.matrix.role="mcp-gateway" \
+      net.matrix.owner="FC13F74B@matrix.net" \
+      net.matrix.customer="PVT-01" \
+      net.matrix.costcenter="INT-01" \
+      net.matrix.oid="iso.org.dod.internet.42387" \
+      net.matrix.duns="iso.org.duns.039271257"
 
 COPY --from=builder /src/odoo-mcp-server /odoo-mcp-server
 # Copy shared libs required by libtls/kcgi
