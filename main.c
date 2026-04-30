@@ -14,6 +14,7 @@
 #include "arena.h"
 #include "rc.h"
 
+#include <sys/types.h>  /* ssize_t — must precede kcgi.h on Linux */
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -36,8 +37,10 @@ enum Page { PAGE_MCP, PAGE_HEALTHZ, PAGE__MAX };
 
 static const char *PAGES[PAGE__MAX] = { "mcp", "healthz" };
 
-/* No query keys needed — we read raw body */
-static const struct kvalid KEYS[] = {{ NULL, 0 }};
+/* No query keys needed — we read raw body.
+ * NULL name + NULL validator: kcgi stores the entire POST body in
+ * r->fields[0].val / r->fields[0].valsz for application/json requests. */
+const struct kvalid KEYS[] = {{ NULL, NULL }};
 
 /* ── /healthz ────────────────────────────────────────────────────────────── */
 
@@ -76,20 +79,16 @@ static void handle_mcp(struct kreq *r, OdooCtx *ctx,
         return;
     }
 
-    /* Read raw POST body */
+    /* Read raw POST body.
+     * kcgi stores the body in r->fields[0].val/valsz when a NULL-name
+     * key is registered (see KEYS table). */
     char  *body = (char *)arena_alloc(a, REQ_MAX);
     size_t blen = 0;
 
-    /* kcgi stores the raw body in r->fieldmap when mime is unknown,
-     * but for JSON we read via r->rawbuflen / r->rawbuf.
-     * Use the raw body directly. */
-    if (r->rawbuflen && r->rawbuflen < REQ_MAX) {
-        memcpy(body, r->rawbuf, r->rawbuflen);
-        blen = r->rawbuflen;
-    } else if (r->fieldmap) {
-        /* fallback: try first field value as raw body */
-        const char *fv = r->fieldmap[0].val;
-        if (fv) { blen = strlen(fv); memcpy(body, fv, blen); }
+    if (r->fieldsz > 0 && NULL != r->fields[0].val) {
+        blen = r->fields[0].valsz;
+        if (blen >= REQ_MAX) blen = REQ_MAX - 1;
+        memcpy(body, r->fields[0].val, blen);
     }
 
     if (0 == blen) {

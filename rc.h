@@ -23,7 +23,7 @@ void *rc_alloc(size_t size, void (*destroy)(void *data))
     assert(rc);
     rc->count = 0;
     rc->destroy = destroy;
-    printf("[RC] %p allocated\n", rc);
+    printf("[RC] %p allocated\n", (void *)rc);
     return rc + 1;
 }
 
@@ -41,8 +41,8 @@ void rc_release(void *data)
     rc->count -= 1;
     if (rc->count <= 0) {
         rc->destroy(rc + 1);
+        printf("[RC] %p released\n", (void *)rc);
         free(rc);
-        printf("[RC] %p released\n", rc);
     }
 }
 

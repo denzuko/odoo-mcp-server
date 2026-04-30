@@ -362,3 +362,25 @@ Prod target is FreeBSD or NetBSD. Linux is preprod only.
 - config.h: impl.c added to CC_INPUTS for both native and WASM targets.
 - nob.c: build_test() added with separate-object compilation
   (impl.o → mcp.o → odoo.o → link tests binary).
+
+---
+
+## [1.1.2] — 2026-04-30
+
+### Fixed
+
+- main.c: `kreq.rawbuflen`/`rawbuf` do not exist in kcgi — hallucinated
+  fields. Real pattern: register a key named "" with NULL validator;
+  kcgi stores the JSON body in `r->fields[0].val`/`valsz` for
+  application/json content-type. `#include <sys/types.h>` added before
+  kcgi.h to provide `ssize_t` on Linux.
+- net.c: `#include <tls.h>` fails on Ubuntu (libtls is LibreSSL/libretls).
+  Added pkg-config detection in CI; CI installs `libretls-dev` on Ubuntu.
+- rc.h: use-after-free warning on rc_release printf — wrapped in
+  `(void*)` cast and moved print before free.
+- CI: `actions/github-script` replaced with `jayqi/failed-build-issue-action@v1`.
+  Fires as a separate job with `if: failure()` dependency, not an inline
+  step — avoids the deprecated scripting pattern entirely.
+- docs/secrets.md: complete secrets reference added for CF Workers
+  (Cloudflare API token scopes), GitHub tokens (GITHUB_TOKEN vs PAT),
+  and Terraform Cloud workspace token.
