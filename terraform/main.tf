@@ -22,7 +22,16 @@
 # Tracker: https://github.com/cloudflare/terraform-provider-cloudflare/issues/6852
 
 terraform {
-  required_version = ">= 1.9.0"
+  required_version = "1.15.0"
+
+  cloud {
+    
+    organization = "denzuko-devops"
+    workspaces {
+      name = "odoo-mcp-server"
+    }
+  }
+   
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
