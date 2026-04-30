@@ -7,8 +7,10 @@ on:
   pull_request:
     branches: ["main"]
 
+# Create a GitHub issue when any job fails on main
+# Reusable via: needs: [job], if: failure()
+
 jobs:
-  # ── Build: native ELF ────────────────────────────────────────────────────
   build-native:
     runs-on: ubuntu-latest
     steps:
@@ -25,8 +27,8 @@ jobs:
       - name: Vendor nob.h
         run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
 
-      - name: Build nob driver
-        run: gcc -std=c99 -D_POSIX_C_SOURCE=200809L -o nob nob.c
+      - name: Build nob driver (native)
+        run: cc nob.c -o nob
 
       - name: Build native binary
         run: ./nob
@@ -36,7 +38,19 @@ jobs:
           name: odoo-mcp-native
           path: odoo-mcp-server
 
-  # ── Build: WASM ──────────────────────────────────────────────────────────
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: build-native on ${context.sha.slice(0,7)}`,
+              body:  `build-native failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci'],
+            })
+
   build-wasm:
     runs-on: ubuntu-latest
     steps:
@@ -53,19 +67,30 @@ jobs:
       - name: Vendor nob.h
         run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
 
-      - name: Build nob driver
-        run: gcc -std=c99 -D_POSIX_C_SOURCE=200809L -o nob nob.c
+      - name: Build nob driver (wasm)
+        run: cc -Dwasm nob.c -o nob
 
       - name: Build WASM module
-        run: WASI_SDK=/opt/wasi-sdk ./nob wasm
+        run: WASI_SDK=/opt/wasi-sdk ./nob
 
       - uses: actions/upload-artifact@v4
         with:
           name: odoo-mcp-wasm
           path: odoo-mcp-server.wasm
 
-  # ── Docker image: build and push to GHCR ─────────────────────────────────
-  # The quadlet container unit pulls from here at runtime.
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: build-wasm on ${context.sha.slice(0,7)}`,
+              body:  `build-wasm failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci'],
+            })
+
   docker:
     runs-on: ubuntu-latest
     needs: build-native
@@ -73,15 +98,14 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image: ${{ steps.meta.outputs.tags }}
       digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Vendor nob.h (needed by Dockerfile builder stage)
+      - name: Vendor nob.h
         run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
 
-      - name: Docker meta (tags + labels)
+      - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -100,8 +124,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
       - name: Build and push
         id: push
@@ -114,11 +137,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── SBOM: cdxgen CycloneDX + SPDX, osv-scanner → SARIF ──────────────────
-  # Pattern from podcast-mgr. No Trivy, no Checkov.
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: docker on ${context.sha.slice(0,7)}`,
+              body:  `docker build/push failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci'],
+            })
+
   sbom:
     runs-on: ubuntu-latest
-    needs: docker
+    needs: [build-native, build-wasm]
     steps:
       - uses: actions/checkout@v4
 
@@ -134,33 +168,16 @@ jobs:
 
       - name: cdxgen SPDX JSON
         run: |
-          cdxgen -t c --output-format spdx-json -o sbom.spdx.json \
-            --spec-version 1.6 . || \
-          node -e "
-const c=require('./sbom.cdx.json');
-const s={spdxVersion:'SPDX-2.3',dataLicense:'CC0-1.0',
-  SPDXID:'SPDXRef-DOCUMENT',name:c.metadata.component.name,
-  documentNamespace:'https://github.com/denzuko/odoo-mcp-server/sbom',
-  packages:(c.components||[]).map((p,i)=>({SPDXID:'SPDXRef-'+p.name+'-'+i,
-    name:p.name,versionInfo:p.version||'NOASSERTION',
-    licenseConcluded:p.licenses?.[0]?.license?.id||'NOASSERTION',
-    downloadLocation:'NOASSERTION',filesAnalyzed:false}))};
-require('fs').writeFileSync('sbom.spdx.json',JSON.stringify(s,null,2));
-console.log('SPDX:',s.packages.length,'pkgs');"
+          cdxgen -t c --output-format spdx-json \
+            -o sbom.spdx.json --spec-version 1.6 . \
+          || node scripts/gen_spdx.js
 
       - name: osv-scanner SARIF
         run: |
           osv-scanner --sbom=sbom.cdx.json --format=sarif \
             --output=osv.sarif.json || true
-          python3 -c "
-import json,os
-f='osv.sarif.json'
-if not os.path.exists(f) or os.path.getsize(f)==0:
-    json.dump({'version':'2.1.0','runs':[]},open(f,'w'))
-else:
-    d=json.load(open(f))
-    print('osv:',sum(len(r.get('results',[])) for r in d.get('runs',[])))
-"
+          python3 scripts/sarif_stub.py osv.sarif.json osv-scanner
+
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
@@ -175,7 +192,19 @@ else:
             sbom.spdx.json
             osv.sarif.json
 
-  # ── C SAST: cppcheck + clang AST ─────────────────────────────────────────
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: sbom on ${context.sha.slice(0,7)}`,
+              body:  `SBOM generation failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci'],
+            })
+
   sast-c:
     runs-on: ubuntu-latest
     needs: build-native
@@ -183,25 +212,12 @@ else:
       - uses: actions/checkout@v4
       - run: sudo apt-get install -y cppcheck clang
 
-      - name: cppcheck SARIF
+      - name: cppcheck
         run: |
           cppcheck --enable=all --std=c99 --suppress=missingInclude \
             --inline-suppr --error-exitcode=0 \
             --output-file=cppcheck.xml --xml *.c 2>&1 || true
-          python3 -c "
-import xml.etree.ElementTree as ET,json
-r=[]
-for e in ET.parse('cppcheck.xml').findall('.//error'):
-    l=e.find('location')
-    r.append({'ruleId':e.get('id','?'),
-      'level':'error' if e.get('severity') in ('error','warning') else 'note',
-      'message':{'text':e.get('msg','')},
-      'properties':{'severity':e.get('severity','').upper()},
-      'locations':[{'physicalLocation':{'artifactLocation':{'uri':l.get('file','') if l is not None else ''},
-        'region':{'startLine':int(l.get('line',1)) if l is not None else 1}}}]})
-json.dump({'version':'2.1.0','runs':[{'tool':{'driver':{'name':'cppcheck','rules':[]}},'results':r}]},
-  open('cppcheck.sarif.json','w'),indent=2)
-print(f'cppcheck: {len(r)} findings')"
+          python3 scripts/cppcheck_to_sarif.py cppcheck.xml cppcheck.sarif.json
 
       - name: clang AST call extraction
         run: |
@@ -227,13 +243,25 @@ print(f'cppcheck: {len(r)} findings')"
             cppcheck.sarif.json
             ast_calls.json
 
-  # ── Terraform SAST: KICS ─────────────────────────────────────────────────
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: sast-c on ${context.sha.slice(0,7)}`,
+              body:  `C SAST failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci', 'security'],
+            })
+
   terraform-sast:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: KICS scan SARIF
+      - name: KICS scan
         run: |
           docker run --rm \
             -v "$(pwd)/terraform:/path" -v "$(pwd):/output" \
@@ -241,15 +269,9 @@ print(f'cppcheck: {len(r)} findings')"
               --report-formats sarif --output-path /output \
               --output-name kics-tf --exclude-severities info,low \
               --no-progress || true
-          python3 -c "
-import json,os,shutil
-src='kics-tf.sarif'; dst='kics-tf.sarif.json'
-if not os.path.exists(src) or os.path.getsize(src)==0:
-    json.dump({'version':'2.1.0','runs':[]},open(dst,'w'))
-else:
-    d=json.load(open(src))
-    print('KICS:',sum(len(r.get('results',[])) for r in d.get('runs',[])))
-    shutil.copy(src,dst)"
+          # kics outputs kics-tf.sarif (no .json extension)
+          [ -f kics-tf.sarif ] && cp kics-tf.sarif kics-tf.sarif.json || true
+          python3 scripts/sarif_stub.py kics-tf.sarif.json kics
 
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -262,7 +284,19 @@ else:
           name: tf-sast-artifacts
           path: kics-tf.sarif.json
 
-  # ── Terraform plan + conftest ─────────────────────────────────────────────
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: terraform-sast on ${context.sha.slice(0,7)}`,
+              body:  `Terraform SAST failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci', 'security'],
+            })
+
   terraform-plan:
     runs-on: ubuntu-latest
     needs: terraform-sast
@@ -310,7 +344,19 @@ else:
           name: tf-plan-json
           path: terraform/plan.json
 
-  # ── OPA quality gate (all SARIF → all Rego policies) ─────────────────────
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: terraform-plan on ${context.sha.slice(0,7)}`,
+              body:  `Terraform plan/conftest gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci'],
+            })
+
   opa-gate:
     runs-on: ubuntu-latest
     needs: [sast-c, terraform-sast, terraform-plan, sbom]
@@ -349,7 +395,19 @@ else:
             --fail-defined 'data.odoo_mcp.sarif.violations[_]' && \
             echo "sarif CVE gate: PASS"
 
-  # ── Terraform apply (CF Workers WASM deploy) ──────────────────────────────
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: opa-gate on ${context.sha.slice(0,7)}`,
+              body:  `OPA policy gate failed — a security finding blocks merge.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci', 'security'],
+            })
+
   terraform-deploy:
     runs-on: ubuntu-latest
     needs: opa-gate
@@ -371,7 +429,7 @@ else:
           name: odoo-mcp-wasm
           path: .
 
-      - name: Install wrangler (needed by local-exec in Terraform)
+      - name: Install wrangler
         run: npm install -g wrangler
 
       - uses: hashicorp/setup-terraform@v3
@@ -385,7 +443,19 @@ else:
           terraform apply -auto-approve
           terraform output mcp_endpoint
 
-  # ── GitHub Pages ──────────────────────────────────────────────────────────
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: terraform-deploy on ${context.sha.slice(0,7)}`,
+              body:  `Production deploy failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci', 'production'],
+            })
+
   pages:
     runs-on: ubuntu-latest
     needs: opa-gate

@@ -157,3 +157,39 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - sj.h — vendored rxi/sj.h v0.4 (public domain).
   Added to LICENSE.txt vendored section.
+
+---
+
+## [1.8.0] — 2026-04-30
+
+### Fixed
+
+- CI YAML syntax error: inline Node.js `const` keywords were tripping
+  YAML's key scanner. All inline scripts moved to scripts/ files:
+  scripts/gen_spdx.js, scripts/sarif_stub.py,
+  scripts/cppcheck_to_sarif.py, scripts/clang_tidy_to_sarif.py
+
+- nob.c: build target selected at compile time, not via subcommand arg.
+    cc nob.c -o nob           # native ELF
+    cc -Dwasm nob.c -o nob    # wasm32-wasi
+  Verified both variants compile clean against nob.h v3.8.2.
+
+- mcp.c/mcp.h: TOOLS_LIST static const char[] replaced with
+  McpToolRegistry struct + McpToolId enum on root arena.
+  mcp_registry_init() called once at startup with a long-lived root
+  arena; strings copied in once, never reallocated. mcp_handle()
+  serialises tools/list from the registry at request time.
+
+- main.c: root arena (64 KiB, never reset) holds registry strings;
+  per-request arena (4 MiB, reset each iteration) unchanged.
+
+- README.md, docs/index.html: `export VAR=` antipractice replaced with
+  `env VAR=... ./binary` idiom throughout.
+  nob build commands updated: cc nob.c -o nob / cc -Dwasm nob.c -o nob
+
+### Added
+
+- CI: `Open issue on failure` step on every job (main branch only).
+  Creates a labelled GitHub Issue with run URL and commit SHA when any
+  job fails. Labels: bug + ci (+ security for sast/opa jobs,
+  + production for terraform-deploy).

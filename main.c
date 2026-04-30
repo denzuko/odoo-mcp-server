@@ -60,7 +60,8 @@ static void handle_healthz(struct kreq *r, OdooCtx *ctx, Arena *a)
 
 /* ── /mcp ────────────────────────────────────────────────────────────────── */
 
-static void handle_mcp(struct kreq *r, OdooCtx *ctx, Arena *a)
+static void handle_mcp(struct kreq *r, OdooCtx *ctx,
+                       const McpToolRegistry *reg, Arena *a)
 {
     /* Only POST allowed */
     if (KMETHOD_POST != r->method) {
@@ -98,7 +99,7 @@ static void handle_mcp(struct kreq *r, OdooCtx *ctx, Arena *a)
     }
 
     char *resp = (char *)arena_alloc(a, RESP_MAX);
-    int   n    = mcp_handle(body, blen, resp, RESP_MAX, ctx, a);
+    int   n    = mcp_handle(body, blen, resp, RESP_MAX, ctx, reg, a);
 
     /* n == 0 means notification (no response per spec) */
     if (0 == n) {
@@ -119,9 +120,15 @@ static void handle_mcp(struct kreq *r, OdooCtx *ctx, Arena *a)
 
 int main(void)
 {
-    Config  cfg = config_load();
-    OdooCtx ctx = { &cfg, 0 };
-    Arena   a   = arena_new(ARENA_SIZE);
+    Config          cfg  = config_load();
+    OdooCtx         ctx  = { &cfg, 0 };
+    /* Root arena: long-lived, holds registry strings, never reset */
+    Arena           root = arena_new(64 * 1024);
+    /* Per-request arena: reset each iteration */
+    Arena           a    = arena_new(ARENA_SIZE);
+    McpToolRegistry reg  = {0};
+
+    mcp_registry_init(&reg, &root);
 
     struct kreq r;
     struct kfcgi *fcgi = NULL;
@@ -141,11 +148,11 @@ int main(void)
 
         if (KCGI_OK != ke) break;
 
-        arena_reset(&a);   /* recycle arena each request */
+        arena_reset(&a);   /* recycle per-request arena */
 
         switch (r.page) {
-        case PAGE_MCP:     handle_mcp    (&r, &ctx, &a); break;
-        case PAGE_HEALTHZ: handle_healthz(&r, &ctx, &a); break;
+        case PAGE_MCP:     handle_mcp    (&r, &ctx, &reg, &a); break;
+        case PAGE_HEALTHZ: handle_healthz(&r, &ctx, &a);       break;
         default:
             khttp_head(&r, kresps[KRESP_STATUS], "%s", khttps[KHTTP_404]);
             khttp_body(&r);
@@ -158,6 +165,7 @@ int main(void)
 
     if (fcgi) khttp_fcgi_free(fcgi);
     arena_free(&a);
+    arena_free(&root);
     return 0;
 }
 

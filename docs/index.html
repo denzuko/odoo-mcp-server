@@ -328,23 +328,22 @@ footer {
   <h3>Native ELF</h3>
   <span class="pre-label">shell</span>
   <pre id="pre-native"><button class="copy-btn" onclick="copyPre('pre-native')">COPY</button><span class="cmt"># Bootstrap the build driver once</span>
-cc -o nob nob.c
+cc nob.c -o nob
 
 <span class="cmt"># Build native FreeBSD binary</span>
 ./nob
 
 <span class="cmt"># Run</span>
-<span class="kw">export</span> ODOO_URL=https://dapla.net
-<span class="kw">export</span> ODOO_DB=your_db
-<span class="kw">export</span> ODOO_USER=you@dapla.net
-<span class="kw">export</span> ODOO_API_KEY=your_api_key
-./odoo-mcp-server</pre>
+<span class="kw">env</span> ODOO_URL=https://dapla.net \\
+    ODOO_DB=your_db \\
+    ODOO_USER=you@dapla.net \\
+    ODOO_API_KEY=your_api_key \\
+    ./odoo-mcp-server</pre>
 
   <h3>WASM (Cloudflare Workers)</h3>
   <span class="pre-label">shell</span>
   <pre id="pre-wasm"><button class="copy-btn" onclick="copyPre('pre-wasm')">COPY</button><span class="cmt"># Build WASM module</span>
-<span class="kw">export</span> WASI_SDK=/opt/wasi-sdk
-./nob wasm
+cc -Dwasm nob.c -o nob &amp;&amp; WASI_SDK=/opt/wasi-sdk ./nob
 <span class="cmt"># → odoo-mcp.wasm</span>
 
 <span class="cmt"># Deploy via Terraform (wrangler called via local-exec)</span>

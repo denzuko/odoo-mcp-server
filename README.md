@@ -24,13 +24,13 @@ Requires: `cc`, `kcgi`, `libtls` (FreeBSD: `pkg install kcgi libressl`)
 
 ```sh
 # Bootstrap once
-cc -o nob nob.c
+cc nob.c -o nob
 
 # Native ELF
 ./nob
 
 # wasm32-wasi module (requires wasi-sdk)
-WASI_SDK=/opt/wasi-sdk ./nob wasm
+cc -Dwasm nob.c -o nob && ./nob
 
 # Clean
 ./nob clean
@@ -39,11 +39,11 @@ WASI_SDK=/opt/wasi-sdk ./nob wasm
 ## Run (native)
 
 ```sh
-export ODOO_URL=https://dapla.net
-export ODOO_DB=your_database
-export ODOO_USER=you@dapla.net
-export ODOO_API_KEY=your_api_key
-./odoo-mcp-server
+env ODOO_URL=https://dapla.net \
+    ODOO_DB=your_database \
+    ODOO_USER=you@dapla.net \
+    ODOO_API_KEY=your_api_key \
+    ./odoo-mcp-server
 ```
 
 ## Server deploy (Podman Quadlet)
@@ -69,7 +69,7 @@ Add the HAProxy stanza from `examples/haproxy-odoo-mcp.cfg` to route
 
 ```sh
 # Build the WASM module
-WASI_SDK=/opt/wasi-sdk ./nob wasm
+cc -Dwasm nob.c -o nob && ./nob
 
 # Deploy via Terraform (wrangler called via local-exec)
 cd terraform/

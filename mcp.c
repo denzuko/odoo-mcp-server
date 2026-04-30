@@ -109,64 +109,79 @@ static int jrpc_err(JsonBuf *b, sj_Value id, int code, const char *msg)
     return (int)b->len;
 }
 
-/* ── Tool schemas (tools/list) ──────────────────────────────────────────── */
+/* ── Tool registry ──────────────────────────────────────────────────────── */
 
-static const char TOOLS_LIST[] =
-"["
-  "{"
-    "\"name\":\"search_read_records\","
-    "\"description\":\"Search any Odoo model and return specified fields.\","
-    "\"inputSchema\":{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-        "\"model\":{\"type\":\"string\"},"
-        "\"domain\":{\"type\":\"array\"},"
-        "\"fields\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
-        "\"limit\":{\"type\":\"integer\",\"default\":80},"
-        "\"offset\":{\"type\":\"integer\",\"default\":0},"
-        "\"order\":{\"type\":\"string\"}"
-      "},"
-      "\"required\":[\"model\"]"
-    "}"
-  "},"
-  "{"
-    "\"name\":\"get_model_fields\","
-    "\"description\":\"Return field definitions for an Odoo model.\","
-    "\"inputSchema\":{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-        "\"model\":{\"type\":\"string\"},"
-        "\"attributes\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}}"
-      "},"
-      "\"required\":[\"model\"]"
-    "}"
-  "},"
-  "{"
-    "\"name\":\"create_record\","
-    "\"description\":\"Create a new record in an Odoo model.\","
-    "\"inputSchema\":{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-        "\"model\":{\"type\":\"string\"},"
-        "\"values\":{\"type\":\"object\"}"
-      "},"
-      "\"required\":[\"model\",\"values\"]"
-    "}"
-  "},"
-  "{"
-    "\"name\":\"update_record\","
-    "\"description\":\"Update existing records in an Odoo model.\","
-    "\"inputSchema\":{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-        "\"model\":{\"type\":\"string\"},"
-        "\"record_ids\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"}},"
-        "\"values\":{\"type\":\"object\"}"
-      "},"
-      "\"required\":[\"model\",\"record_ids\",\"values\"]"
-    "}"
-  "}"
-"]";
+void mcp_registry_init(McpToolRegistry *reg, Arena *root)
+{
+    reg->count = TOOL_COUNT;
+
+    reg->tools[TOOL_SEARCH_READ] = (McpTool){
+        .name        = arena_strdup(root, "search_read_records"),
+        .description = arena_strdup(root,
+            "Search any Odoo model and return specified fields."),
+        .input_schema = arena_strdup(root,
+            "{"
+              "\"type\":\"object\","
+              "\"properties\":{"
+                "\"model\":{\"type\":\"string\"},"
+                "\"domain\":{\"type\":\"array\"},"
+                "\"fields\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
+                "\"limit\":{\"type\":\"integer\",\"default\":80},"
+                "\"offset\":{\"type\":\"integer\",\"default\":0},"
+                "\"order\":{\"type\":\"string\"}"
+              "},"
+              "\"required\":[\"model\"]"
+            "}"),
+    };
+
+    reg->tools[TOOL_GET_FIELDS] = (McpTool){
+        .name        = arena_strdup(root, "get_model_fields"),
+        .description = arena_strdup(root,
+            "Return field definitions for an Odoo model."),
+        .input_schema = arena_strdup(root,
+            "{"
+              "\"type\":\"object\","
+              "\"properties\":{"
+                "\"model\":{\"type\":\"string\"},"
+                "\"attributes\":{\"type\":\"array\","
+                  "\"items\":{\"type\":\"string\"}}"
+              "},"
+              "\"required\":[\"model\"]"
+            "}"),
+    };
+
+    reg->tools[TOOL_CREATE] = (McpTool){
+        .name        = arena_strdup(root, "create_record"),
+        .description = arena_strdup(root,
+            "Create a new record in an Odoo model."),
+        .input_schema = arena_strdup(root,
+            "{"
+              "\"type\":\"object\","
+              "\"properties\":{"
+                "\"model\":{\"type\":\"string\"},"
+                "\"values\":{\"type\":\"object\"}"
+              "},"
+              "\"required\":[\"model\",\"values\"]"
+            "}"),
+    };
+
+    reg->tools[TOOL_UPDATE] = (McpTool){
+        .name        = arena_strdup(root, "update_record"),
+        .description = arena_strdup(root,
+            "Update existing records in an Odoo model."),
+        .input_schema = arena_strdup(root,
+            "{"
+              "\"type\":\"object\","
+              "\"properties\":{"
+                "\"model\":{\"type\":\"string\"},"
+                "\"record_ids\":{\"type\":\"array\","
+                  "\"items\":{\"type\":\"integer\"}},"
+                "\"values\":{\"type\":\"object\"}"
+              "},"
+              "\"required\":[\"model\",\"record_ids\",\"values\"]"
+            "}"),
+    };
+}
 
 /* ── Re-serialise a sj_Value subtree back to JSON ───────────────────────── */
 /*
@@ -375,6 +390,7 @@ static int dispatch_tool(const char    *toolname,
 int mcp_handle(const char *req, size_t rlen,
                char *out, size_t olen,
                OdooCtx *ctx,
+               const McpToolRegistry *reg,
                Arena *a)
 {
     /* sj_reader requires a mutable char* — copy into arena scratch */
@@ -436,7 +452,21 @@ int mcp_handle(const char *req, size_t rlen,
 
     /* ── tools/list ── */
     if (sj_eq(method, "tools/list")) {
-        const char *result = arena_sprintf(a, "{\"tools\":%s}", TOOLS_LIST);
+        /* Serialise registry into JSON array */
+        JsonBuf tb = jbuf_new(a, 4096);
+        jbuf_cstr(&tb, "[");
+        for (size_t i = 0; i < reg->count; i++) {
+            if (i > 0) jbuf_cstr(&tb, ",");
+            jbuf_cstr(&tb, "{");
+            jbuf_key(&tb, "name");        jbuf_str(&tb, reg->tools[i].name);
+            jbuf_cstr(&tb, ",");
+            jbuf_key(&tb, "description"); jbuf_str(&tb, reg->tools[i].description);
+            jbuf_cstr(&tb, ",");
+            jbuf_key(&tb, "inputSchema"); jbuf_cstr(&tb, reg->tools[i].input_schema);
+            jbuf_cstr(&tb, "}");
+        }
+        jbuf_cstr(&tb, "]");
+        const char *result = arena_sprintf(a, "{\"tools\":%s}", tb.buf);
         jrpc_ok(&b, id, result);
         goto done;
     }
