@@ -154,8 +154,8 @@ _install_unit() {
     printf '    wrote %s\n' "$_dst"
 }
 
-_install_unit "${SCRIPT_DIR}/networks/odoo-mcp.network"
-_install_unit "${SCRIPT_DIR}/volumes/odoo-mcp-data.volume"
+_install_unit "${SCRIPT_DIR}/containers/odoo-mcp.network"
+_install_unit "${SCRIPT_DIR}/containers/odoo-mcp-data.volume"
 _install_unit "${SCRIPT_DIR}/containers/odoo-mcp.container"
 
 # Write env file — preserve operator edits on re-runs (idempotent)
