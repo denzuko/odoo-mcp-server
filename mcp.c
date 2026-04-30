@@ -13,7 +13,6 @@
  * BSD 2-Clause License
  */
 
-#define SJ_IMPL
 #include "sj.h"
 
 #include "mcp.h"
@@ -54,16 +53,6 @@ static long long sj_ll(sj_Value v)
     if (n >= sizeof tmp) n = sizeof(tmp) - 1;
     memcpy(tmp, v.start, n);
     return strtoll(tmp, NULL, 10);
-}
-
-/* strtod over a sj_Value range */
-static double sj_dbl(sj_Value v)
-{
-    char tmp[64] = {0};
-    size_t n = (size_t)(v.end - v.start);
-    if (n >= sizeof tmp) n = sizeof(tmp) - 1;
-    memcpy(tmp, v.start, n);
-    return strtod(tmp, NULL);
 }
 
 /* ── JSON-RPC response builders ─────────────────────────────────────────── */
@@ -214,7 +203,7 @@ static const char *sj_value_to_json(Arena *a, sj_Value v, const char *src_end)
          * Because sj_Reader modifies .cur we use a local copy.
          */
         const char *p     = v.start;
-        size_t      raw_n = (size_t)(src_end - p);
+        (void)src_end; /* raw scan uses p directly */
         /* Scan forward to find the matching close */
         int depth = 0;
         bool in_str = false;
@@ -340,10 +329,12 @@ static int dispatch_tool(const char    *toolname,
 
     } else if (0 == strcmp(toolname, "create_record")) {
         method = "create";
-        if (!have_values) {
+        if (!have_values || SJ_OBJECT != values_v.type ||
+            values_v.end <= values_v.start + 2) {
+            /* missing or empty {} */
             jbuf_cstr(out_b,
                 "{\"isError\":true,\"content\":["
-                "{\"type\":\"text\",\"text\":\"missing required field: values\"}]}");
+                "{\"type\":\"text\",\"text\":\"values must be a non-empty object\"}]}");
             return (int)out_b->len;
         }
         args   = arena_sprintf(a, "[%s]",
@@ -371,6 +362,11 @@ static int dispatch_tool(const char    *toolname,
         return (int)out_b->len;
     }
 
+    if (NULL == ctx) {
+        jbuf_cstr(out_b, "{\"isError\":true,\"content\":["
+            "{\"type\":\"text\",\"text\":\"no Odoo context\"}]}");
+        return (int)out_b->len;
+    }
     int rc = odoo_execute(ctx, model, method, args, kwargs,
                           odoo_resp, sizeof odoo_resp, a);
 
@@ -398,12 +394,23 @@ int mcp_handle(const char *req, size_t rlen,
     memcpy(buf, req, rlen);
     buf[rlen] = '\0';
 
-    sj_Reader r   = sj_reader(buf, rlen);
+    sj_Reader r    = sj_reader(buf, rlen);
     sj_Value  root = sj_read(&r);
     JsonBuf   b    = jbuf_new(a, 4096);
 
-    /* Parse error */
+    /* Parse error — sj_read only catches outer type; probe one iter
+     * to surface unknown-token errors inside malformed objects */
     if (SJ_OBJECT != root.type) {
+        goto parse_error;
+    } else {
+        sj_Reader probe = r;   /* copy — don't consume real reader */
+        sj_Value pk, pv;
+        sj_iter_object(&probe, root, &pk, &pv);
+        if (probe.error) goto parse_error;
+    }
+    goto after_parse_check;
+
+parse_error: {
         const char *e =
             "{\"jsonrpc\":\"2.0\",\"id\":null,"
             "\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}";
@@ -411,6 +418,7 @@ int mcp_handle(const char *req, size_t rlen,
         if (n < olen) memcpy(out, e, n + 1);
         return (int)n;
     }
+after_parse_check:;
 
     /* Extract id, method, params from the top-level object */
     sj_Value id     = { .type = SJ_NULL };

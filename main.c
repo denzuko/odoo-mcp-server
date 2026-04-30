@@ -10,10 +10,7 @@
  */
 #ifndef __wasm__   /* native only — WASM target uses worker.js instead */
 
-/* tsoding/arena.h and tsoding/rc.h implementations live here —
- * exactly one translation unit defines these. */
-#define ARENA_IMPLEMENTATION
-#define RC_IMPLEMENTATION
+/* tsoding/arena.h and tsoding/rc.h implementations live in impl.c */
 #include "arena.h"
 #include "rc.h"
 

@@ -314,3 +314,51 @@ Deploy (separate, pulls from signed locations):
 ```
 
 Prod target is FreeBSD or NetBSD. Linux is preprod only.
+
+---
+
+## [2.0.0] — 2026-04-30
+
+### Added
+
+- test.h — minimal inline xUnit harness (tsoding/podcast-mgr pattern).
+  Macros: TEST, RUN, ASSERT, ASSERT_NULL, ASSERT_NOTNULL,
+  ASSERT_INT, ASSERT_STR, ASSERT_CONTAINS, xunit_summary().
+
+- tests.c — 40 BDD-driven xUnit tests covering:
+    arena: zero-init, snapshot/rewind, strdup, sprintf
+    rc:    alloc, acquire/release count
+    JsonBuf: string escaping (quote/backslash/newline), int, null,
+             bool, key, growth past initial cap
+    json_to_xmlrpc: null, string, integer, bool, array, object, empty
+    mcp registry: tool count, names/descriptions/schemas, uniqueness
+    mcp_handle: initialize, tools/list, parse error (-32700),
+                unknown method (-32601), notification no-response,
+                missing model, empty values rejection,
+                id preserved as number/string
+    odoo_auth: success with stub, uid caching, bad credentials
+  Tests drove fixes: parse-error probe (sj error in iteration),
+  empty-values gate, NULL ctx guard.
+
+- impl.c — single TU owning ARENA_IMPLEMENTATION, RC_IMPLEMENTATION,
+  SJ_IMPL. Eliminates stb redefinition errors across TUs.
+  Linked into both production and test binaries.
+
+- policy/containers.rego — OPA gate for Containerfile and quadlet units:
+    net.matrix labels present, no docker.io, not alpine base,
+    WantedBy=default.target, EnvironmentFile=%h, NoNewPrivileges,
+    DropCapability=ALL.
+
+- scripts/check_containers.sh — emits JSON input for containers.rego.
+
+- CI: test job (./nob test), containers-gate job, both added to opa-gate
+  needs. Both emit GitHub Issues on failure.
+
+### Changed
+
+- mcp.c: sj_dbl removed (unused in this TU). Parse error now probes
+  one sj_iter_object call to catch unknown-token errors. create_record
+  rejects empty {} values. dispatch_tool guards NULL ctx.
+- config.h: impl.c added to CC_INPUTS for both native and WASM targets.
+- nob.c: build_test() added with separate-object compilation
+  (impl.o → mcp.o → odoo.o → link tests binary).

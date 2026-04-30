@@ -59,6 +59,41 @@ jobs:
               labels: ['bug', 'ci'],
             })
 
+  test:
+    runs-on: ubuntu-latest
+    needs: build-native
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends gcc make
+          git clone --depth=1 https://github.com/kristapsdz/kcgi /tmp/kcgi
+          cd /tmp/kcgi && ./configure && make && sudo make install
+
+      - name: Vendor nob.h
+        run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
+
+      - name: Build nob driver
+        run: gcc -std=c99 -D_POSIX_C_SOURCE=200809L -o nob nob.c
+
+      - name: Run xUnit tests
+        run: ./nob test
+
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: test on ${context.sha.slice(0,7)}`,
+              body:  `xUnit tests failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci'],
+            })
+
   build-wasm:
     runs-on: ubuntu-latest
     steps:
@@ -202,6 +237,40 @@ jobs:
               labels: ['bug', 'ci', 'security'],
             })
 
+  containers-gate:
+    runs-on: ubuntu-latest
+    needs: build-native
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OPA
+        run: |
+          curl -sLo /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+
+      - name: Generate containers check JSON
+        run: sh scripts/check_containers.sh > containers_check.json
+
+      - name: OPA containers gate
+        run: |
+          opa eval -d policy/containers.rego -i containers_check.json \
+            --fail-defined 'data.odoo_mcp.containers.violations[_]' && \
+            echo "containers gate: PASS"
+
+      - name: Open issue on failure
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `CI failure: containers-gate on ${context.sha.slice(0,7)}`,
+              body:  `Container/quadlet policy gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              labels: ['bug', 'ci'],
+            })
+
   terraform-sast:
     runs-on: ubuntu-latest
     steps:
@@ -304,7 +373,7 @@ jobs:
 
   opa-gate:
     runs-on: ubuntu-latest
-    needs: [sast-c, terraform-sast, terraform-plan, sbom]
+    needs: [test, sast-c, containers-gate, terraform-sast, terraform-plan, sbom]
     steps:
       - uses: actions/checkout@v4
 

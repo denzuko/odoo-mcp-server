@@ -17,14 +17,14 @@
 
 #ifdef __wasm__
 #  define TARGET     "odoo-mcp-server.wasm"
-#  define CC_INPUTS  "mcp.c", "odoo.c"
+#  define CC_INPUTS  "impl.c", "mcp.c", "odoo.c"
 #  define CC_EXTRA   "--target=wasm32-wasi", "-D__wasm__", \
                      "-mexec-model=reactor"
 #  define LINK_FLAGS "-Wl,--export=mcp_handle", "-Wl,--no-entry"
 #  define LINK_LIBS  /* none */
 #else
 #  define TARGET     "odoo-mcp-server"
-#  define CC_INPUTS  "main.c", "mcp.c", "odoo.c", "net.c"
+#  define CC_INPUTS  "impl.c", "main.c", "mcp.c", "odoo.c", "net.c"
 #  define CC_EXTRA   "-D_FORTIFY_SOURCE=2", "-fstack-protector-strong", \
                      "-Wpedantic", "-Wno-unused-parameter"
 #  define LINK_FLAGS /* none */

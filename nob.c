@@ -30,6 +30,59 @@
 
 #include <string.h>
 
+static bool build_test(void)
+{
+    nob_mkdir_if_not_exists(BUILD_FOLDER);
+
+    /* Compile impl.c — owns ARENA_IMPLEMENTATION, RC_IMPLEMENTATION, SJ_IMPL */
+    Nob_Cmd cmd = {0};
+    nob_cc(&cmd);
+    nob_cc_flags(&cmd);
+    nob_cmd_append(&cmd, "-std=c99", "-O2", "-Wno-unused-parameter", "-I.");
+    nob_cc_output(&cmd, BUILD_FOLDER "impl.o");
+    nob_cmd_append(&cmd, "-c", "impl.c");
+    nob_log(NOB_INFO, "compiling impl.c");
+    if (!nob_cmd_run(&cmd)) return false;
+
+    /* Compile mcp.c */
+    cmd = (Nob_Cmd){0};
+    nob_cc(&cmd);
+    nob_cc_flags(&cmd);
+    nob_cmd_append(&cmd, "-std=c99", "-O2", "-Wno-unused-parameter", "-I.");
+    nob_cc_output(&cmd, BUILD_FOLDER "mcp.o");
+    nob_cmd_append(&cmd, "-c", "mcp.c");
+    nob_log(NOB_INFO, "compiling mcp.c");
+    if (!nob_cmd_run(&cmd)) return false;
+
+    /* Compile odoo.c */
+    cmd = (Nob_Cmd){0};
+    nob_cc(&cmd);
+    nob_cc_flags(&cmd);
+    nob_cmd_append(&cmd, "-std=c99", "-O2", "-Wno-unused-parameter", "-I.");
+    nob_cc_output(&cmd, BUILD_FOLDER "odoo.o");
+    nob_cmd_append(&cmd, "-c", "odoo.c");
+    nob_log(NOB_INFO, "compiling odoo.c");
+    if (!nob_cmd_run(&cmd)) return false;
+
+    /* Link tests binary — stubs net_http_post, no kcgi */
+    cmd = (Nob_Cmd){0};
+    nob_cc(&cmd);
+    nob_cc_flags(&cmd);
+    nob_cmd_append(&cmd, "-std=c99", "-O2", "-Wno-unused-parameter", "-I.");
+    nob_cc_output(&cmd, BUILD_FOLDER "tests");
+    nob_cmd_append(&cmd, "tests.c",
+                   BUILD_FOLDER "impl.o",
+                   BUILD_FOLDER "mcp.o",
+                   BUILD_FOLDER "odoo.o");
+    nob_log(NOB_INFO, "linking tests");
+    if (!nob_cmd_run(&cmd)) return false;
+
+    cmd = (Nob_Cmd){0};
+    nob_cmd_append(&cmd, BUILD_FOLDER "tests");
+    nob_log(NOB_INFO, "running tests");
+    return nob_cmd_run(&cmd);
+}
+
 static bool build(void)
 {
     nob_mkdir_if_not_exists(BUILD_FOLDER);
@@ -74,10 +127,8 @@ int main(int argc, char **argv)
 {
     NOB_GO_REBUILD_URSELF(argc, argv);
 
-    if (argc > 1 && 0 == strcmp(argv[1], "clean")) {
-        do_clean();
-        return 0;
-    }
+    if (argc > 1 && 0 == strcmp(argv[1], "test"))  return build_test()  ? 0 : 1;
+    if (argc > 1 && 0 == strcmp(argv[1], "clean")) { do_clean(); return 0; }
 
     return build() ? 0 : 1;
 }
