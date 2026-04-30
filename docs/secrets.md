@@ -1,6 +1,6 @@
 # Secrets & Tokens Reference
 
-All secrets for CI/CD and server deployment. **Never commit real values.**
+All secrets required for CI/CD and deployment. **Never commit real values.**
 
 ---
 
@@ -8,75 +8,118 @@ All secrets for CI/CD and server deployment. **Never commit real values.**
 
 Set via: **Settings → Secrets and variables → Actions → New repository secret**
 
-### Cloudflare (CI deploy)
+### GITHUB_TOKEN (automatic — no setup needed)
+
+GitHub automatically provides `secrets.GITHUB_TOKEN` to every workflow.
+Used by: Docker push to GHCR (`packages: write` permission), issue
+creation (`jayqi/failed-build-issue-action`), GH Pages deploy.
+
+**No manual secret needed.** Permissions declared in the workflow:
+
+```yaml
+permissions:
+  contents: read
+  packages: write   # for GHCR push (docker job)
+  issues:   write   # for notify job (failed-build-issue-action)
+  pages:    write   # for pages job
+  id-token: write   # for pages OIDC
+```
+
+### Cloudflare secrets
 
 | Secret | Description | How to obtain |
 |---|---|---|
-| `CF_ACCOUNT_ID` | Cloudflare account ID | dash.cloudflare.com → right sidebar |
+| `CF_ACCOUNT_ID` | Cloudflare account ID | dash.cloudflare.com → right sidebar under your name |
 | `CF_ZONE_ID` | Zone ID for dapla.net | dash.cloudflare.com → dapla.net → Overview → right sidebar |
-| `CF_API_TOKEN` | Workers:Edit token (production deploy) | dash.cloudflare.com → My Profile → API Tokens → Create Token → "Edit Cloudflare Workers" template |
-| `CF_API_TOKEN_PLAN` | Workers:Read token (plan-only, no deploy) | Same as above but with Read-only permissions |
+| `CF_API_TOKEN` | Workers deploy token (production) | See token scopes below |
+| `CF_API_TOKEN_PLAN` | Workers read-only token (plan job) | See token scopes below |
 
-**Minimum token permissions for `CF_API_TOKEN`:**
-- Zone — Workers Routes — Edit
-- Account — Workers Scripts — Edit
-- Account — Workers KV Storage — Edit (if used)
+**`CF_API_TOKEN` minimum scopes** (create at dash.cloudflare.com → My Profile → API Tokens → Create Token):
 
-**Minimum token permissions for `CF_API_TOKEN_PLAN`:**
-- Zone — Workers Routes — Read
-- Account — Workers Scripts — Read
+```
+Account — Workers Scripts      — Edit
+Account — Workers KV Storage   — Edit  (if used)
+Zone    — Workers Routes       — Edit
+Zone    — Zone                 — Read   (to read zone_id)
+```
 
-### Odoo credentials (CI integration test + Terraform secrets)
+**`CF_API_TOKEN_PLAN` minimum scopes**:
+
+```
+Account — Workers Scripts      — Read
+Zone    — Workers Routes       — Read
+Zone    — Zone                 — Read
+```
+
+### Odoo secrets
 
 | Secret | Description |
 |---|---|
 | `ODOO_URL` | `https://dapla.net` |
-| `ODOO_DB` | Your Odoo database name |
-| `ODOO_USER` | Login email (e.g. `denzuko@dapla.net`) |
-| `ODOO_API_KEY` | Odoo user API key — Settings → Technical → API Keys → New |
+| `ODOO_DB` | Your Odoo database name (Settings → Technical → Database Structure) |
+| `ODOO_USER` | Login email |
+| `ODOO_API_KEY` | Settings → Technical → API Keys → New |
 
-### GitHub Environments
+### Terraform Cloud
 
-Two environments must exist in **Settings → Environments**:
+| Secret | Description | How to obtain |
+|---|---|---|
+| `TF_API_TOKEN` | Terraform Cloud workspace token | app.terraform.io → your org → Settings → API Tokens → Create team token |
 
-**`plan`** — used by `terraform-plan` job
-- Secrets: `CF_API_TOKEN_PLAN`, `CF_ACCOUNT_ID`, `CF_ZONE_ID`, all `ODOO_*`
-- No required reviewers (plan is read-only)
+Configure the backend in `terraform/versions.tf`:
 
-**`production`** — used by `terraform-deploy` job
-- Secrets: `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_ZONE_ID`, all `ODOO_*`
-- **Enable required reviewers** — at least one human must approve before apply
+```hcl
+backend "remote" {
+  organization = "da-planet-security"
+  workspaces { name = "odoo-mcp-server" }
+}
+```
+
+Set workspace variables in Terraform Cloud (not in `.tf` files) for
+`TF_VAR_cloudflare_api_token`, `TF_VAR_odoo_api_key`, etc. — mark them
+**Sensitive**.
 
 ---
 
-## Server-Side Secrets (native quadlet deployment)
+## GitHub Environments
 
-Managed by `odoo_mcp_setup.sh`. Written to:
+Two environments in **Settings → Environments**:
 
-```
-/home/odoo-mcp/.config/containers/systemd/odoo-mcp.env
-```
+**`plan`** — used by `terraform-plan` job (read-only, no approval gate)
 
-Permissions: `0600`, owned by `odoo-mcp` service account. Never world-readable.
+Secrets: `CF_API_TOKEN_PLAN`, `CF_ACCOUNT_ID`, `CF_ZONE_ID`,
+`ODOO_URL`, `ODOO_DB`, `ODOO_USER`, `ODOO_API_KEY`
 
-The setup script accepts credentials via environment variables or interactive
-prompt. To inject non-interactively:
+**`production`** — used by `terraform-deploy` job
+
+Secrets: `CF_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_ZONE_ID`,
+`ODOO_URL`, `ODOO_DB`, `ODOO_USER`, `ODOO_API_KEY`, `TF_API_TOKEN`
+
+**Enable required reviewers** on `production` — at least one human must
+approve before `terraform apply` runs.
+
+---
+
+## Server-side env file (native quadlet deployment)
+
+Written by `odoo_mcp_setup.sh` to:
+`/home/odoo-mcp/.config/containers/systemd/odoo-mcp.env`
+
+Permissions: `0600`, owned by `odoo-mcp` service account.
 
 ```sh
-ODOO_URL=https://dapla.net \
-ODOO_DB=your_db \
-ODOO_USER=denzuko@dapla.net \
-ODOO_API_KEY=your_api_key \
-  ./odoo_mcp_setup.sh
+# Non-interactive install:
+env ODOO_URL=https://dapla.net \
+    ODOO_DB=your_db \
+    ODOO_USER=denzuko@dapla.net \
+    ODOO_API_KEY=your_api_key \
+    sudo ./odoo_mcp_setup.sh
 ```
 
-To rotate the API key after initial install:
-
+**Key rotation:**
 ```sh
-# Edit the env file directly as root
+# Edit the env file, then restart:
 vi /home/odoo-mcp/.config/containers/systemd/odoo-mcp.env
-
-# Restart the container to pick up the new key
 su -s /bin/sh -c \
   "XDG_RUNTIME_DIR=/run/user/$(id -u odoo-mcp) \
    systemctl --user restart odoo-mcp.service" odoo-mcp
@@ -84,31 +127,26 @@ su -s /bin/sh -c \
 
 ---
 
-## Cloudflare Workers Secrets (WASM deploy via Terraform)
+## Cloudflare Workers secrets (Terraform-managed)
 
-Managed by `cloudflare_workers_secret` resources in `terraform/main.tf`.
-Injected at `terraform apply` time from `TF_VAR_*` environment variables,
-which are sourced from the GitHub `production` environment secrets.
+The five secrets deployed by `terraform/main.tf` as `cloudflare_workers_secret`
+resources. Injected at `terraform apply` from GitHub `production` environment
+secrets → `TF_VAR_*` → Terraform variables. Encrypted at rest by Cloudflare,
+never appear in `terraform.tfstate` in plaintext (`sensitive = true`).
 
-The five secrets deployed to the Worker:
-
-| Wrangler name | Terraform variable | Value |
+| Worker env var | Terraform variable | GitHub secret |
 |---|---|---|
-| `ODOO_URL` | `TF_VAR_odoo_url` | `https://dapla.net` |
-| `ODOO_DB` | `TF_VAR_odoo_db` | your database name |
-| `ODOO_USER` | `TF_VAR_odoo_user` | login email |
-| `ODOO_API_KEY` | `TF_VAR_odoo_api_key` | Odoo API key |
-| `CORS_ORIGINS` | `TF_VAR_cors_origins` | `https://claude.ai` |
-
-Secrets are **encrypted at rest** by Cloudflare and never appear in
-`terraform.tfstate` in plaintext (marked `sensitive = true`).
+| `ODOO_URL` | `TF_VAR_odoo_url` | `ODOO_URL` |
+| `ODOO_DB` | `TF_VAR_odoo_db` | `ODOO_DB` |
+| `ODOO_USER` | `TF_VAR_odoo_user` | `ODOO_USER` |
+| `ODOO_API_KEY` | `TF_VAR_odoo_api_key` | `ODOO_API_KEY` |
+| `CORS_ORIGINS` | `TF_VAR_cors_origins` | *(hardcoded default: `https://claude.ai`)* |
 
 ---
 
 ## What is never committed
 
-- `env/odoo-mcp.env` with real values — template only, real copy lives on server
-- `terraform/*.tfstate` — listed in `.gitignore`
-- `terraform/plan.json` — listed in `.gitignore`
-- `workers/.dev.vars` — listed in `.gitignore`
-- Any file containing `ODOO_API_KEY` with a real value
+- `env/odoo-mcp.env` with real values
+- `terraform/*.tfstate`, `terraform/plan.json`, `terraform/plan.tfplan`
+- `workers/.dev.vars`
+- Any file containing a real `ODOO_API_KEY` or `CF_API_TOKEN`

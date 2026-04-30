@@ -20,7 +20,16 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
-#include <tls.h>
+
+/* libtls: FreeBSD ships LibreSSL; Linux needs libretls (pkg: libretls-dev)
+ * or LibreSSL installed manually. Both provide <tls.h>. */
+#if defined(__linux__)
+#  include <tls.h>
+#elif defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#  include <tls.h>
+#else
+#  include <tls.h>
+#endif
 
 #define NET_READ_BUF  (64 * 1024)  /* 64 KiB read buffer */
 

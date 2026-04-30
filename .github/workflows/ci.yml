@@ -17,6 +17,10 @@ on:
   pull_request:
     branches: ["main"]
 
+permissions:
+  contents: read
+  issues:   write
+
 jobs:
   # ── Phase 1: Build ──────────────────────────────────────────────────────
   build-native:
@@ -47,17 +51,6 @@ jobs:
           name: odoo-mcp-native
           path: build/odoo-mcp-server
 
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `CI failure: build-native on ${context.sha.slice(0,7)}`,
-              body: `build-native failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
-              labels: ['bug', 'ci'],
-            })
 
   test:
     runs-on: ubuntu-latest
@@ -81,18 +74,6 @@ jobs:
       - name: Run xUnit tests
         run: ./nob test
 
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              title: `CI failure: test on ${context.sha.slice(0,7)}`,
-              body:  `xUnit tests failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
-              labels: ['bug', 'ci'],
-            })
 
   build-wasm:
     runs-on: ubuntu-latest
@@ -121,23 +102,6 @@ jobs:
           name: odoo-mcp-wasm
           path: build/odoo-mcp-server.wasm
 
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `CI failure: build-wasm on ${context.sha.slice(0,7)}`,
-              body: `build-wasm failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
-              labels: ['bug', 'ci'],
-            })
-
-  # ── Phase 2: Gate (shift-left) ──────────────────────────────────────────
-  sbom:
-    runs-on: ubuntu-latest
-    needs: [build-native, build-wasm]
-    steps:
       - uses: actions/checkout@v4
 
       - name: Install cdxgen + osv-scanner
@@ -176,17 +140,6 @@ jobs:
             sbom.spdx.json
             osv.sarif.json
 
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `CI failure: sbom on ${context.sha.slice(0,7)}`,
-              body: `SBOM/CVE gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              labels: ['bug', 'ci', 'security'],
-            })
 
   sast-c:
     runs-on: ubuntu-latest
@@ -225,17 +178,6 @@ jobs:
             cppcheck.sarif.json
             ast_calls.json
 
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `CI failure: sast-c on ${context.sha.slice(0,7)}`,
-              body: `C SAST gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              labels: ['bug', 'ci', 'security'],
-            })
 
   containers-gate:
     runs-on: ubuntu-latest
@@ -258,18 +200,6 @@ jobs:
             --fail-defined 'data.odoo_mcp.containers.violations[_]' && \
             echo "containers gate: PASS"
 
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              title: `CI failure: containers-gate on ${context.sha.slice(0,7)}`,
-              body:  `Container/quadlet policy gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
-              labels: ['bug', 'ci'],
-            })
 
   terraform-sast:
     runs-on: ubuntu-latest
@@ -298,17 +228,6 @@ jobs:
           name: tf-sast-artifacts
           path: kics-tf.sarif.json
 
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `CI failure: terraform-sast on ${context.sha.slice(0,7)}`,
-              body: `Terraform SAST gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              labels: ['bug', 'ci', 'security'],
-            })
 
   terraform-plan:
     runs-on: ubuntu-latest
@@ -359,17 +278,6 @@ jobs:
           name: tf-plan-json
           path: terraform/plan.json
 
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `CI failure: terraform-plan on ${context.sha.slice(0,7)}`,
-              body: `Terraform conftest gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              labels: ['bug', 'ci'],
-            })
 
   opa-gate:
     runs-on: ubuntu-latest
@@ -409,21 +317,6 @@ jobs:
             --fail-defined 'data.odoo_mcp.sarif.violations[_]' && \
             echo "sarif CVE gate: PASS"
 
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `CI failure: opa-gate on ${context.sha.slice(0,7)}`,
-              body: `OPA policy gate failed — security finding blocks release.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              labels: ['bug', 'ci', 'security'],
-            })
-
-  # ── Phase 3: Publish ────────────────────────────────────────────────────
-  # All gates passed. Sign artefacts and publish to signed locations.
-  # Deployment jobs (Terraform, quadlet update, rc.d update) pull FROM here.
 
   publish:
     runs-on: ubuntu-latest
@@ -532,35 +425,6 @@ jobs:
           cosign sign --yes \
             ghcr.io/denzuko/odoo-mcp-server@${{ steps.image-push.outputs.digest }}
 
-      - name: Open issue on failure
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `CI failure: publish on ${context.sha.slice(0,7)}`,
-              body: `Release publish failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              labels: ['bug', 'ci'],
-            })
-
-  # ── CF Workers deploy (Terraform) ───────────────────────────────────────
-  # Pulls signed .wasm from GitHub Release. Runs AFTER publish.
-  terraform-deploy:
-    runs-on: ubuntu-latest
-    needs: publish
-    if: startsWith(github.ref, 'refs/tags/v')
-    environment: production
-    env:
-      TF_VAR_cloudflare_api_token:  ${{ secrets.CF_API_TOKEN }}
-      TF_VAR_cloudflare_account_id: ${{ secrets.CF_ACCOUNT_ID }}
-      TF_VAR_cloudflare_zone_id:    ${{ secrets.CF_ZONE_ID }}
-      TF_VAR_odoo_url:              ${{ secrets.ODOO_URL }}
-      TF_VAR_odoo_db:               ${{ secrets.ODOO_DB }}
-      TF_VAR_odoo_user:             ${{ secrets.ODOO_USER }}
-      TF_VAR_odoo_api_key:          ${{ secrets.ODOO_API_KEY }}
-      TF_VAR_release_tag:           ${{ github.ref_name }}
-    steps:
       - uses: actions/checkout@v4
 
       - name: Install cosign + wrangler
@@ -600,31 +464,6 @@ jobs:
           terraform apply -auto-approve
           terraform output mcp_endpoint
 
-      - name: Open issue on failure
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `CI failure: terraform-deploy on ${context.sha.slice(0,7)}`,
-              body: `CF Workers deploy failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              labels: ['bug', 'ci', 'production'],
-            })
-
-  # ── GitHub Pages ────────────────────────────────────────────────────────
-  pages:
-    runs-on: ubuntu-latest
-    needs: opa-gate
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
@@ -632,3 +471,23 @@ jobs:
           path: docs/
       - id: deploy
         uses: actions/deploy-pages@v4
+
+  notify:
+    runs-on: ubuntu-latest
+    needs:
+      - build-native
+      - build-wasm
+      - docker
+      - test
+      - sbom
+      - sast-c
+      - containers-gate
+      - terraform-sast
+      - terraform-plan
+      - opa-gate
+    if: failure() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    steps:
+      - uses: jayqi/failed-build-issue-action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          label-name: "ci"

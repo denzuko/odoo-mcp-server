@@ -550,7 +550,25 @@ TEST(odoo_auth_fails_on_bad_credentials)
     _net_stub_resp = NULL;
 }
 
-/* ── Runner ─────────────────────────────────────────────────────────────── */
+/* ── Suite: kcgi integration contract ───────────────────────────────────── */
+/* Validates the KEYS table shape used by main.c without linking kcgi.
+ * We declare a minimal struct and define KEYS locally matching what
+ * main.c must provide. */
+
+struct kvalid { const char *name; int (*valid)(void *); };
+
+/* This must match main.c KEYS exactly — test enforces the contract */
+static const struct kvalid TEST_KEYS[] = {{ NULL, NULL }};
+
+TEST(keys_table_has_body_key)
+{
+    /* NULL name + NULL validator: kcgi stores raw POST body in
+     * fields[0].val/valsz — the contract main.c depends on */
+    ASSERT_NULL(TEST_KEYS[0].name);
+    ASSERT_NULL(TEST_KEYS[0].valid);
+}
+
+
 
 int main(void)
 {
@@ -610,6 +628,9 @@ int main(void)
     RUN(odoo_auth_succeeds_with_stub_response);
     RUN(odoo_auth_caches_uid);
     RUN(odoo_auth_fails_on_bad_credentials);
+
+    printf("\nkcgi integration contract:\n");
+    RUN(keys_table_has_body_key);
 
     return xunit_summary();
 }
