@@ -13,12 +13,12 @@ set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONTAINERS="$ROOT/containers"
 
-# Escape a file's content to JSON string value
+# Escape a file's content for use as a JSON string value (POSIX awk)
 json_escape() {
-    python3 -c "
-import sys, json
-print(json.dumps(sys.stdin.read()), end='')
-"
+    awk 'BEGIN { printf "\"" }
+         { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); gsub(/\t/, "\\t")
+           gsub(/\r/, "\\r"); printf "%s\\n", $0 }
+         END { printf "\"" }'
 }
 
 printf '{\n'

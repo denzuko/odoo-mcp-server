@@ -125,7 +125,12 @@ static void do_clean(void)
 
 int main(int argc, char **argv)
 {
-    NOB_GO_REBUILD_URSELF(argc, argv);
+    /* NOB_GO_REBUILD_URSELF intentionally omitted: it recompiles nob with
+     * plain cc (no -Dwasm), which would overwrite a wasm-bootstrapped nob
+     * with a native one, causing the wasm build to compile native-only files.
+     * nob is always bootstrapped explicitly before use:
+     *   cc nob.c -o nob         (native)
+     *   cc -Dwasm nob.c -o nob  (wasm) */
 
     if (argc > 1 && 0 == strcmp(argv[1], "test"))  return build_test()  ? 0 : 1;
     if (argc > 1 && 0 == strcmp(argv[1], "clean")) { do_clean(); return 0; }

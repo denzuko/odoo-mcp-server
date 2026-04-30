@@ -154,7 +154,7 @@ jobs:
           cppcheck --enable=all --std=c99 --suppress=missingInclude \
             --inline-suppr --error-exitcode=0 \
             --output-file=cppcheck.xml --xml *.c 2>&1 || true
-          python3 scripts/cppcheck_to_sarif.py cppcheck.xml cppcheck.sarif.json
+          sh scripts/cppcheck_to_sarif.sh cppcheck.xml cppcheck.sarif.json
 
       - name: clang AST call extraction
         run: |
