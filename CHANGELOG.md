@@ -103,3 +103,30 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `docs/secrets.md` — complete secrets reference: GitHub Actions secrets,
   Cloudflare API token permissions, server-side env file, Terraform Worker
   secrets, what is never committed.
+
+---
+
+## [1.5.0] — 2026-04-29
+
+### Fixed
+
+- `nob.c` — complete rewrite against real nob.h v3.8.2 API:
+  - `nob_cmd_run(&cmd)` replaces deprecated `nob_cmd_run_sync(cmd)`
+  - `nob_cmd_append(cmd, ...)` variadic — no trailing NULL
+  - `nob_temp_sprintf()` for path string construction (replaces
+    hallucinated `NOB_CONCAT` macro which does not exist)
+  - `#define _POSIX_C_SOURCE 200809L` required by nob.h timespec usage
+  - Target binary renamed `odoo-mcp-server` (was `odoo-mcp`)
+  - WASM target renamed `odoo-mcp-server.wasm`
+
+### Added
+
+- `Dockerfile` — multi-stage build. Stage 1: gcc + kcgi from source +
+  nob build driver compiles the C binary. Stage 2: distroless/cc
+  final image with only the binary and required shared libs.
+  Tagged and pushed to `ghcr.io/denzuko/odoo-mcp-server` by CI.
+  This is what the quadlet container unit pulls at runtime.
+- CI `docker` job — builds and pushes to GHCR on every push to main
+  and on semver tags. `GITHUB_TOKEN` permissions: packages:write.
+  Tags: `latest` (main only), `v{version}`, `sha-{short}`.
+  Docker layer cache via `cache-from/to: type=gha`.
