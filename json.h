@@ -1,8 +1,12 @@
 /*
- * json.h — minimal JSON builder and pull-parser
+ * json.h — arena-backed JSON builder and recursive-descent parser
  *
- * Builder:  append-only into an Arena, no malloc, no escaping surprises
- * Parser:   recursive-descent over a flat char buffer (JSON.h compatible API)
+ * Original code — not sheredom/json.h (which is heap-allocated, incompatible
+ * with our arena-only-in-hot-path rule).
+ *
+ * Builder:  append-only JsonBuf into an Arena — no malloc, no escaping surprises
+ * Parser:   recursive-descent JsonParser over a flat char buffer — all nodes
+ *           allocated from the same Arena, freed in bulk at request end
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
  * BSD 2-Clause License
