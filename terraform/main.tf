@@ -44,6 +44,18 @@ provider "cloudflare" {
 resource "cloudflare_worker" "odoo_mcp" {
   account_id = var.cloudflare_account_id
   name       = var.worker_name
+
+  # net.matrix label schema — mirrors container/OCI label convention
+  tags = [
+    "net.matrix.organization:Private Ops",
+    "net.matrix.orgunit:Matrix NOC",
+    "net.matrix.application:odoo-mcp-server",
+    "net.matrix.role:mcp-gateway",
+    "net.matrix.customer:PVT-01",
+    "net.matrix.costcenter:INT-01",
+    "net.matrix.environment:production",
+    "net.matrix.oid:iso.org.dod.internet.42387",
+  ]
 }
 
 # ── Code upload via wrangler (local-exec, bridges provider gap) ───────── #

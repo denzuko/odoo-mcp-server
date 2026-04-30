@@ -34,13 +34,17 @@ sj.h — Public Domain (Unlicense)
   https://github.com/rxi/sj.h
   This is free and unencumbered software released into the public domain.
 
-sv.h — MIT License
-  Copyright (c) Alexey Kutepov <reximkut@gmail.com> (Tsoding)
-  https://github.com/tsoding/sv
-
 arena.h — MIT License
   Copyright (c) 2022 Alexey Kutepov <reximkut@gmail.com> (Tsoding)
   https://github.com/tsoding/arena
+
+rc.h — MIT License (assumed; no explicit licence in repo header)
+  Copyright (c) Alexey Kutepov <reximkut@gmail.com> (Tsoding)
+  https://github.com/tsoding/rc.h
+
+sv.h — MIT License
+  Copyright (c) Alexey Kutepov <reximkut@gmail.com> (Tsoding)
+  https://github.com/tsoding/sv
 
 nob.h — MIT License
   Copyright (c) Alexey Kutepov <reximkut@gmail.com> (Tsoding)

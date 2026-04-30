@@ -11,25 +11,73 @@ targets (native FreeBSD ELF + wasm32-wasi for Cloudflare Workers).
 - **Language**: C99 (`-std=c99`)
 - **HTTP layer**: kcgi (native target only)
 - **TLS**: libtls (native target only)
-- **Build**: tsoding/nob.h — `cc -o nob nob.c && ./nob`
-- **WASM**: wasi-sdk clang `--target=wasm32-wasi`
+- **Build**: tsoding/nob.h — `cc nob.c -o nob` (native), `cc -Dwasm nob.c -o nob` (WASM)
+- **JSON parse**: rxi/sj.h (zero-alloc cursor, public domain)
+- **JSON build**: json.h JsonBuf (arena-backed builder, original)
+- **Arena**: tsoding/arena.h — `Arena a = {0}`, Region linked-list, auto-grows
+- **RC**: tsoding/rc.h — `rc_alloc()`, `rc_acquire()`, `rc_release()`
 - **Deploy**: Terraform + `local-exec wrangler` for CF Workers
 - **Policy**: OPA/Rego — `opa eval --fail-defined violations[_]`
 - **SBOM**: cdxgen → CycloneDX + SPDX; osv-scanner CVE → SARIF
 - **SAST**: cppcheck (C), KICS (Terraform HCL)
 
-## The single platform boundary
+## Arena pattern (tsoding/arena.h)
 
-`net.h` is the only file with `#ifdef __wasm__`. All other source
-files compile identically for both targets. Do not add `#ifdef __wasm__`
-anywhere else.
+No `arena_new()`. No fixed capacity. Zero-init and let regions grow:
+
+```c
+Arena root = {0};                    /* long-lived, never rewound */
+Arena a    = {0};                    /* request-scoped */
+Arena_Mark m = arena_snapshot(&a);   /* save before request work */
+/* ... work ... */
+arena_rewind(&a, m);                 /* rewind, not reset */
+arena_free(&a); arena_free(&root);   /* shutdown only */
+```
+
+No scratch arenas. `ARENA_IMPLEMENTATION` defined once in `main.c`.
+
+## RC pattern (tsoding/rc.h)
+
+For objects shared across request boundaries (e.g. registry strings):
+
+```c
+MyThing *t = rc_alloc(sizeof *t, my_destroy); /* count starts at 0 */
+rc_acquire(t);   /* share */
+rc_release(t);   /* release — frees at count 0 */
+```
+
+`RC_IMPLEMENTATION` defined once in `main.c`.
+
+## Static data pattern
+
+No `static const char[]` JSON strings. All static data is:
+- enum for identity (`McpToolId`)
+- struct for shape (`McpTool`, `McpToolRegistry`)
+- stored on root arena via `mcp_registry_init(&reg, &root)`
+
+## net.matrix label schema
+
+All containers, OCI images, quadlet units, and Terraform resources carry:
+
+```
+net.matrix.organization  Private Ops
+net.matrix.orgunit       Matrix NOC
+net.matrix.commonname    <service-name>
+net.matrix.environment   production | staging | nonprod
+net.matrix.application   <app-name>
+net.matrix.role          <role>
+net.matrix.owner         FC13F74B@matrix.net
+net.matrix.customer      PVT-01
+net.matrix.costcenter    INT-01
+net.matrix.oid           iso.org.dod.internet.42387
+net.matrix.duns          iso.org.duns.039271257
+```
 
 ## Code conventions
 
 - Yoda conditions: `if (NULL == p)`, `if (0 == strcmp(...))`
-- Arena allocator for all per-request memory (`arena.h`)
-- No `malloc` in hot path
-- No `system()`, `popen()`, `exec*()` anywhere — Rego AST gate enforces
+- All allocation through arena — no `malloc` in hot path
+- No `system()`, `popen()`, `exec*()` — Rego AST gate enforces
 - Section headers: `/* ── SECTION ── */`
 - C99 only — no C11/C2x extensions
 
