@@ -227,3 +227,33 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - CLAUDE.md: arena/rc patterns documented with correct API, net.matrix
   schema documented, static data pattern documented (enum+struct on
   root arena, no static const char[] JSON).
+
+---
+
+## [1.10.0] — 2026-04-30
+
+### Changed
+
+- nob.c — rewritten to use the correct nob_cc_* macro API:
+    nob_cc(&cmd)              — appends cc (platform-agnostic)
+    nob_cc_flags(&cmd)        — appends -Wall -Wextra
+    nob_cmd_append(&cmd, ...) — extra flags between cc_* calls
+    nob_cc_output(&cmd, path) — appends -o path
+    nob_cc_inputs(&cmd, ...)  — variadic source file list
+    nob_cmd_run(&cmd)         — variadic options form (v3.8.2)
+  Output goes to BUILD_FOLDER (build/) via nob_mkdir_if_not_exists.
+  No subcommand args — target selected at driver compile time (-Dwasm).
+
+- config.h — build configuration added alongside runtime config:
+    BUILD_FOLDER, SRC_FOLDER — path constants for nob.c
+    TARGET, CC_INPUTS, CC_EXTRA, LINK_FLAGS, LINK_LIBS — all
+    target-specific, guarded by #ifdef __wasm__.
+    nob.c consumes these via #include "config.h" — single source
+    of truth for both build and runtime configuration.
+
+- All artefacts now output to build/:
+    build/odoo-mcp-server      (native ELF)
+    build/odoo-mcp-server.wasm (WASM module)
+
+- CI, Terraform, .gitignore, README updated for build/ output paths.
+- env idiom: WASI_SDK passed via env VAR=... ./nob in CI.

@@ -1,6 +1,5 @@
 /*
- * config.h — environment variable binding
- * All ODOO_* config lives here. Fail fast at startup if missing.
+ * config.h — build configuration (nob.c) + runtime env binding
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
  * BSD 2-Clause License
@@ -10,6 +9,29 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+
+/* ── Build configuration (consumed by nob.c) ────────────────────────────── */
+
+#define BUILD_FOLDER "build/"
+#define SRC_FOLDER   ""          /* sources at project root */
+
+#ifdef __wasm__
+#  define TARGET     "odoo-mcp-server.wasm"
+#  define CC_INPUTS  "mcp.c", "odoo.c"
+#  define CC_EXTRA   "--target=wasm32-wasi", "-D__wasm__", \
+                     "-mexec-model=reactor"
+#  define LINK_FLAGS "-Wl,--export=mcp_handle", "-Wl,--no-entry"
+#  define LINK_LIBS  /* none */
+#else
+#  define TARGET     "odoo-mcp-server"
+#  define CC_INPUTS  "main.c", "mcp.c", "odoo.c", "net.c"
+#  define CC_EXTRA   "-D_FORTIFY_SOURCE=2", "-fstack-protector-strong", \
+                     "-Wpedantic", "-Wno-unused-parameter"
+#  define LINK_FLAGS /* none */
+#  define LINK_LIBS  "-lkcgi", "-lkcgijson", "-ltls"
+#endif
+
+/* ── Runtime configuration ───────────────────────────────────────────────── */
 
 /* Server listen defaults (native target only) */
 #define CFG_DEFAULT_PORT  "8000"

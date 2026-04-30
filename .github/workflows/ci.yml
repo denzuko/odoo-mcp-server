@@ -36,7 +36,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: odoo-mcp-native
-          path: odoo-mcp-server
+          path: build/odoo-mcp-server
 
       - name: Open issue on failure
         if: failure() && github.ref == 'refs/heads/main'
@@ -71,12 +71,12 @@ jobs:
         run: cc -Dwasm nob.c -o nob
 
       - name: Build WASM module
-        run: WASI_SDK=/opt/wasi-sdk ./nob
+        run: env WASI_SDK=/opt/wasi-sdk ./nob
 
       - uses: actions/upload-artifact@v4
         with:
           name: odoo-mcp-wasm
-          path: odoo-mcp-server.wasm
+          path: build/odoo-mcp-server.wasm
 
       - name: Open issue on failure
         if: failure() && github.ref == 'refs/heads/main'
@@ -321,7 +321,8 @@ jobs:
         run: |
           terraform init -backend=false
           terraform validate
-          mkdir -p ../workers && touch ../workers/worker.js ../odoo-mcp-server.wasm
+          mkdir -p ../workers && touch ../workers/worker.js
+          mkdir -p build && touch build/odoo-mcp-server.wasm
           terraform plan -out=plan.tfplan 2>&1 | head -50 || true
           terraform show -json plan.tfplan > plan.json 2>/dev/null || \
             echo '{"resource_changes":[]}' > plan.json

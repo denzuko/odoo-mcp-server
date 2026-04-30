@@ -14,7 +14,7 @@
 #     main_module        = "worker.js"
 #     modules = [{
 #       name         = "odoo-mcp.wasm"
-#       content_file = "${path.module}/../odoo-mcp.wasm"
+#       content_file = "${path.module}/../build/odoo-mcp-server.wasm"
 #       type         = "application/wasm"
 #     }]
 #   }
@@ -71,7 +71,7 @@ resource "cloudflare_worker" "odoo_mcp" {
 locals {
   # Hash both artifacts so any change re-triggers the deploy
   worker_js_hash  = filesha256("${path.module}/../workers/worker.js")
-  wasm_hash       = fileexists("${path.module}/../odoo-mcp.wasm") ? filesha256("${path.module}/../odoo-mcp.wasm") : "no-wasm"
+  wasm_hash       = fileexists("${path.module}/../build/odoo-mcp-server.wasm") ? filesha256("${path.module}/../build/odoo-mcp-server.wasm") : "no-wasm"
   deploy_trigger  = sha256("${local.worker_js_hash}${local.wasm_hash}")
 }
 

@@ -33,3 +33,4 @@ __pycache__/
 # (the live copy lives on the server at ~/.config/containers/systemd/odoo-mcp.env)
 env/odoo-mcp.env.live
 workers/.dev.vars
+build/

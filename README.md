@@ -24,13 +24,14 @@ Requires: `cc`, `kcgi`, `libtls` (FreeBSD: `pkg install kcgi libressl`)
 
 ```sh
 # Bootstrap once
-cc nob.c -o nob
+cc nob.c -o nob          # native target
 
 # Native ELF
 ./nob
+# → build/odoo-mcp-server
 
 # wasm32-wasi module (requires wasi-sdk)
-cc -Dwasm nob.c -o nob && ./nob
+cc -Dwasm nob.c -o nob  # wasm target && ./nob
 
 # Clean
 ./nob clean
@@ -69,7 +70,7 @@ Add the HAProxy stanza from `examples/haproxy-odoo-mcp.cfg` to route
 
 ```sh
 # Build the WASM module
-cc -Dwasm nob.c -o nob && ./nob
+cc -Dwasm nob.c -o nob  # wasm target && ./nob
 
 # Deploy via Terraform (wrangler called via local-exec)
 cd terraform/
