@@ -32,7 +32,9 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            gcc make libssl-dev libretls-dev libkcgi-dev curl
+            gcc bmake libtls-dev curl
+          git clone --depth=1 https://github.com/kristapsdz/kcgi /tmp/kcgi
+          cd /tmp/kcgi && ./configure && bmake && sudo bmake install
 
       - name: Vendor nob.h
         run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
@@ -58,7 +60,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends gcc make libretls-dev
+          sudo apt-get install -y --no-install-recommends gcc libtls-dev
 
       - name: Vendor nob.h
         run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
