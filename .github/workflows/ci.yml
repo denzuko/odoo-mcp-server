@@ -281,7 +281,7 @@ jobs:
 
   opa-gate:
     runs-on: ubuntu-latest
-    needs: [test, sast-c, containers-gate, terraform-sast, terraform-plan, sbom]
+    needs: [test, sast-c, containers-gate, terraform-sast, terraform-plan]
     steps:
       - uses: actions/checkout@v4
 
@@ -474,16 +474,7 @@ jobs:
 
   notify:
     runs-on: ubuntu-latest
-    needs:
-      - build-native
-      - build-wasm
-      - containers-gate
-      - opa-gate
-      - publish
-      - sast-c
-      - terraform-plan
-      - terraform-sast
-      - test
+    needs: [build-wasm, publish]
     if: failure() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     steps:
       - uses: jayqi/failed-build-issue-action@v1
