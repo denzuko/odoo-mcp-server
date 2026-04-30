@@ -5,7 +5,7 @@
  * Parser:   recursive-descent over a flat char buffer (JSON.h compatible API)
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
- * MIT License
+ * BSD 2-Clause License
  */
 #ifndef JSON_H
 #define JSON_H

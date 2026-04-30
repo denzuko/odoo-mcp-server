@@ -19,7 +19,7 @@
 #     --fail-defined 'data.odoo_mcp.c_quality.violations[_]'
 #
 # Da Planet Security / denzuko <denzuko@dapla.net>
-# MIT License
+# BSD 2-Clause License
 
 package odoo_mcp.c_quality
 

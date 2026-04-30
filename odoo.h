@@ -5,7 +5,7 @@
  * No libxml, no expat — just string building + minimal SAX pull.
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
- * MIT License
+ * BSD 2-Clause License
  */
 #ifndef ODOO_H
 #define ODOO_H

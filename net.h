@@ -7,7 +7,7 @@
  * Callers (odoo.c) only see net_http_post() — never a socket.
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
- * MIT License
+ * BSD 2-Clause License
  */
 #ifndef NET_H
 #define NET_H

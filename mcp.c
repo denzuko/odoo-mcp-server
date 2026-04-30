@@ -6,7 +6,7 @@
  *   Body: {"jsonrpc":"2.0","id":N,"method":"...","params":{...}}
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
- * MIT License
+ * BSD 2-Clause License
  */
 #include "mcp.h"
 #include "json.h"

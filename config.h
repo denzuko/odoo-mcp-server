@@ -3,7 +3,7 @@
  * All ODOO_* config lives here. Fail fast at startup if missing.
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
- * MIT License
+ * BSD 2-Clause License
  */
 #ifndef CONFIG_H
 #define CONFIG_H

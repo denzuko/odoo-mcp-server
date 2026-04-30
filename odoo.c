@@ -7,7 +7,7 @@
  *   2. Extract the <value> content and return it as-is for MCP tools/call
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
- * MIT License
+ * BSD 2-Clause License
  */
 #include "odoo.h"
 #include "net.h"

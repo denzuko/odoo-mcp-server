@@ -16,7 +16,7 @@
 # Gate: --fail-defined 'data.odoo_mcp.terraform_sast.violations[_]'
 #
 # Da Planet Security / denzuko <denzuko@dapla.net>
-# MIT License
+# BSD 2-Clause License
 
 package odoo_mcp.terraform_sast
 

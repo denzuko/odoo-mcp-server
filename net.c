@@ -4,7 +4,7 @@
  * Excluded from WASM build — net.h macro handles that target.
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
- * MIT License
+ * BSD 2-Clause License
  */
 #ifndef __wasm__
 

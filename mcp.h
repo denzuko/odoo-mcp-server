@@ -5,7 +5,7 @@
  * Transport-agnostic: caller supplies request body, receives response body.
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
- * MIT License
+ * BSD 2-Clause License
  */
 #ifndef MCP_H
 #define MCP_H
