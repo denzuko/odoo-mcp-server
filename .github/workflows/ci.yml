@@ -32,10 +32,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            gcc make libssl-dev autoconf automake libtool \
-            pkg-config zlib1g-dev curl
-          git clone --depth=1 https://github.com/kristapsdz/kcgi /tmp/kcgi
-          cd /tmp/kcgi && ./configure && make && sudo make install
+            gcc make libssl-dev libretls-dev libkcgi-dev curl
 
       - name: Vendor nob.h
         run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
@@ -61,9 +58,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y --no-install-recommends gcc make
-          git clone --depth=1 https://github.com/kristapsdz/kcgi /tmp/kcgi
-          cd /tmp/kcgi && ./configure && make && sudo make install
+          sudo apt-get install -y --no-install-recommends gcc make libretls-dev
 
       - name: Vendor nob.h
         run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
