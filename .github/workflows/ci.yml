@@ -477,14 +477,13 @@ jobs:
     needs:
       - build-native
       - build-wasm
-      - docker
-      - test
-      - sbom
-      - sast-c
       - containers-gate
-      - terraform-sast
-      - terraform-plan
       - opa-gate
+      - publish
+      - sast-c
+      - terraform-plan
+      - terraform-sast
+      - test
     if: failure() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     steps:
       - uses: jayqi/failed-build-issue-action@v1
