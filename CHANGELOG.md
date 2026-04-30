@@ -130,3 +130,30 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and on semver tags. `GITHUB_TOKEN` permissions: packages:write.
   Tags: `latest` (main only), `v{version}`, `sha-{short}`.
   Docker layer cache via `cache-from/to: type=gha`.
+
+---
+
+## [1.7.0] — 2026-04-29
+
+### Changed
+
+- JSON parsing replaced with rxi/sj.h (public domain, v0.4, 155 lines).
+  sheredom/json.h was rejected (malloc-based, breaks arena security model).
+  Our own recursive-descent parser in json.h also removed.
+  sj.h is a zero-allocation cursor: sj_Reader/sj_Value hold pointers
+  into the original buffer — no heap, no arena nodes, no copies.
+
+- json.h now contains only the JsonBuf builder (arena-backed, unchanged).
+  Parser types (JsonVal, JsonPair, JsonParser, json_parse, json_get) removed.
+
+- mcp.c rewritten to use sj_reader/sj_read/sj_iter_object/sj_iter_array.
+  SJ_IMPL defined here (one translation unit owns the implementation).
+
+- odoo.c JSON→XML-RPC converter rewritten to use sj.h cursor traversal.
+  json_to_xmlrpc() now walks the JSON with sj_iter_object/sj_iter_array
+  and emits XML-RPC incrementally into arena-allocated strings.
+
+### Added
+
+- sj.h — vendored rxi/sj.h v0.4 (public domain).
+  Added to LICENSE.txt vendored section.

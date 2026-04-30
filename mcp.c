@@ -1,13 +1,21 @@
 /*
  * mcp.c — MCP JSON-RPC 2.0 dispatcher
  *
- * Wire format (2025-03-26 spec):
+ * Parses inbound requests with rxi/sj.h (public domain, zero-alloc cursor).
+ * Builds responses with JsonBuf (arena-backed builder from json.h).
+ * SJ_IMPL is defined here — exactly one translation unit.
+ *
+ * Wire format (MCP 2025-03-26):
  *   POST /mcp  Content-Type: application/json
- *   Body: {"jsonrpc":"2.0","id":N,"method":"...","params":{...}}
+ *   {"jsonrpc":"2.0","id":N,"method":"...","params":{...}}
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
  * BSD 2-Clause License
  */
+
+#define SJ_IMPL
+#include "sj.h"
+
 #include "mcp.h"
 #include "json.h"
 #include "odoo.h"
@@ -17,42 +25,85 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
-/* ── JSON-RPC response helpers ──────────────────────────────────────────── */
+/* ── Helpers: sj_Value comparisons ─────────────────────────────────────── */
 
-static int jrpc_ok(JsonBuf *b, const JsonVal *id, const char *result_json)
+/* Compare a sj_Value (pointer range) to a C string — no alloc */
+static bool sj_eq(sj_Value v, const char *s)
 {
-    jbuf_cstr(b, "{");
-    jbuf_key(b, "jsonrpc"); jbuf_str(b, "2.0"); jbuf_cstr(b, ",");
-    jbuf_key(b, "id");
-    if (NULL == id || JSON_NULL == id->type) {
+    size_t n = (size_t)(v.end - v.start);
+    return strlen(s) == n && 0 == memcmp(v.start, s, n);
+}
+
+/* Copy a sj_Value string into the arena as a null-terminated C string */
+static const char *sj_dup(Arena *a, sj_Value v)
+{
+    size_t n = (size_t)(v.end - v.start);
+    char  *p = (char *)arena_alloc(a, n + 1);
+    memcpy(p, v.start, n);
+    p[n] = '\0';
+    return p;
+}
+
+/* strtoll over a sj_Value range */
+static long long sj_ll(sj_Value v)
+{
+    char tmp[32] = {0};
+    size_t n = (size_t)(v.end - v.start);
+    if (n >= sizeof tmp) n = sizeof(tmp) - 1;
+    memcpy(tmp, v.start, n);
+    return strtoll(tmp, NULL, 10);
+}
+
+/* strtod over a sj_Value range */
+static double sj_dbl(sj_Value v)
+{
+    char tmp[64] = {0};
+    size_t n = (size_t)(v.end - v.start);
+    if (n >= sizeof tmp) n = sizeof(tmp) - 1;
+    memcpy(tmp, v.start, n);
+    return strtod(tmp, NULL);
+}
+
+/* ── JSON-RPC response builders ─────────────────────────────────────────── */
+
+/*
+ * Emit the id field from the sj_Reader position at the point where
+ * "id" value was read.  We store the raw sj_Value for id so we can
+ * re-emit it verbatim (number, string, or null).
+ */
+static void jbuf_id(JsonBuf *b, sj_Value id)
+{
+    if (SJ_NULL == id.type || SJ_ERROR == id.type || SJ_END == id.type) {
         jbuf_null(b);
-    } else if (JSON_NUMBER == id->type) {
-        jbuf_int(b, (long long)id->u.n);
-    } else if (JSON_STRING == id->type) {
-        jbuf_sv(b, id->u.s);
+    } else if (SJ_NUMBER == id.type) {
+        jbuf_raw(b, id.start, (size_t)(id.end - id.start));
+    } else if (SJ_STRING == id.type) {
+        jbuf_sj_str(b, id.start, id.end);
     } else {
         jbuf_null(b);
     }
-    jbuf_cstr(b, ",");
-    jbuf_key(b, "result");
-    jbuf_cstr(b, result_json);   /* already-serialised result */
+}
+
+static int jrpc_ok(JsonBuf *b, sj_Value id, const char *result_json)
+{
+    jbuf_cstr(b, "{");
+    jbuf_key(b, "jsonrpc"); jbuf_str(b, "2.0"); jbuf_cstr(b, ",");
+    jbuf_key(b, "id");      jbuf_id(b, id);     jbuf_cstr(b, ",");
+    jbuf_key(b, "result");  jbuf_cstr(b, result_json);
     jbuf_cstr(b, "}");
     return (int)b->len;
 }
 
-static int jrpc_err(JsonBuf *b, const JsonVal *id,
-                    int code, const char *msg)
+static int jrpc_err(JsonBuf *b, sj_Value id, int code, const char *msg)
 {
     jbuf_cstr(b, "{");
     jbuf_key(b, "jsonrpc"); jbuf_str(b, "2.0"); jbuf_cstr(b, ",");
-    jbuf_key(b, "id");
-    if (NULL == id || JSON_NULL == id->type) jbuf_null(b);
-    else if (JSON_NUMBER == id->type) jbuf_int(b, (long long)id->u.n);
-    else jbuf_null(b);
-    jbuf_cstr(b, ",");
-    jbuf_key(b, "error"); jbuf_cstr(b, "{");
-    jbuf_key(b, "code");    jbuf_int(b, code); jbuf_cstr(b, ",");
+    jbuf_key(b, "id");      jbuf_id(b, id);     jbuf_cstr(b, ",");
+    jbuf_key(b, "error");
+    jbuf_cstr(b, "{");
+    jbuf_key(b, "code");    jbuf_int(b, code);  jbuf_cstr(b, ",");
     jbuf_key(b, "message"); jbuf_str(b, msg);
     jbuf_cstr(b, "}}");
     return (int)b->len;
@@ -68,8 +119,8 @@ static const char TOOLS_LIST[] =
     "\"inputSchema\":{"
       "\"type\":\"object\","
       "\"properties\":{"
-        "\"model\":{\"type\":\"string\",\"description\":\"Odoo model name e.g. res.partner\"},"
-        "\"domain\":{\"type\":\"array\",\"description\":\"Odoo domain filter list\"},"
+        "\"model\":{\"type\":\"string\"},"
+        "\"domain\":{\"type\":\"array\"},"
         "\"fields\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
         "\"limit\":{\"type\":\"integer\",\"default\":80},"
         "\"offset\":{\"type\":\"integer\",\"default\":0},"
@@ -117,173 +168,205 @@ static const char TOOLS_LIST[] =
   "}"
 "]";
 
+/* ── Re-serialise a sj_Value subtree back to JSON ───────────────────────── */
+/*
+ * sj.h is a non-allocating cursor — it does not build a tree.
+ * For tool dispatch we need to pass JSON sub-objects (domain, fields,
+ * values, record_ids) through to odoo.c as serialised strings.
+ *
+ * Strategy: re-scan from the value's start position to its matching
+ * close bracket/brace, copying raw bytes.  For scalars, just copy
+ * start..end verbatim.
+ *
+ * We use a fresh sj_Reader from the value's start position and read
+ * until depth returns to 0 for containers, or just copy for scalars.
+ */
+static const char *sj_value_to_json(Arena *a, sj_Value v, const char *src_end)
+{
+    if (SJ_NULL == v.type)   return "null";
+    if (SJ_BOOL == v.type)   return (v.end - v.start == 4) ? "true" : "false";
+    if (SJ_NUMBER == v.type) return sj_dup(a, v);
+    if (SJ_STRING == v.type) {
+        /* v.start/end point inside the quotes — re-add them */
+        JsonBuf b = jbuf_new(a, (size_t)(v.end - v.start) + 4);
+        jbuf_sj_str(&b, v.start, v.end);
+        return b.buf;
+    }
+    if (SJ_OBJECT == v.type || SJ_ARRAY == v.type) {
+        /*
+         * v.start points at the '{' or '['.
+         * We re-read from that position tracking depth until we close.
+         * Because sj_Reader modifies .cur we use a local copy.
+         */
+        const char *p     = v.start;
+        size_t      raw_n = (size_t)(src_end - p);
+        /* Scan forward to find the matching close */
+        int depth = 0;
+        bool in_str = false;
+        const char *q = p;
+        while (q < src_end) {
+            if (in_str) {
+                if ('\\' == *q) { q++; }
+                else if ('"' == *q) { in_str = false; }
+            } else {
+                if ('"' == *q) { in_str = true; }
+                else if ('{' == *q || '[' == *q) { depth++; }
+                else if ('}' == *q || ']' == *q) {
+                    depth--;
+                    if (0 == depth) { q++; break; }
+                }
+            }
+            q++;
+        }
+        size_t n = (size_t)(q - p);
+        char  *out = (char *)arena_alloc(a, n + 1);
+        memcpy(out, p, n);
+        out[n] = '\0';
+        return out;
+    }
+    return "null";
+}
+
 /* ── tools/call dispatch ────────────────────────────────────────────────── */
 
-/*
- * Extract a JSON sub-value as a freshly-serialised string.
- * Returns "{}" if not found, so callers always get valid JSON.
- */
-static const char *jval_to_json(Arena *a, const JsonVal *v)
-{
-    if (NULL == v) return "{}";
-    /* Re-serialise using JsonBuf */
-    JsonBuf b = jbuf_new(a, 4096);
-    switch (v->type) {
-    case JSON_NULL:   jbuf_null(&b);                break;
-    case JSON_BOOL:   jbuf_bool(&b, v->u.b);        break;
-    case JSON_NUMBER: jbuf_int(&b, (long long)v->u.n); break;
-    case JSON_STRING: jbuf_sv(&b, v->u.s);           break;
-    case JSON_ARRAY: {
-        jbuf_cstr(&b, "[");
-        bool first = true;
-        for (const JsonVal *item = v->u.items; item; item = item->next) {
-            if (!first) jbuf_cstr(&b, ",");
-            jbuf_cstr(&b, jval_to_json(a, item));
-            first = false;
-        }
-        jbuf_cstr(&b, "]");
-        break;
-    }
-    case JSON_OBJECT: {
-        jbuf_cstr(&b, "{");
-        bool first = true;
-        for (const JsonPair *pr = v->u.pairs; pr; pr = pr->next) {
-            if (!first) jbuf_cstr(&b, ",");
-            jbuf_sv(&b, pr->key);
-            jbuf_cstr(&b, ":");
-            jbuf_cstr(&b, jval_to_json(a, pr->val));
-            first = false;
-        }
-        jbuf_cstr(&b, "}");
-        break;
-    }
-    default: jbuf_cstr(&b, "null"); break;
-    }
-    return b.buf;
-}
-
-/*
- * Wrap an Odoo XML-RPC response (raw XML) in a MCP content block.
- * We return it as a text block — the LLM can parse or describe the XML.
- */
-static const char *wrap_odoo_result(Arena *a, const char *xml_resp, int rc)
-{
-    if (rc < 0 || NULL == xml_resp)
-        return "{\"type\":\"text\",\"text\":\"Odoo error — see server log\"}";
-
-    JsonBuf b = jbuf_new(a, 512 + (size_t)rc);
-    jbuf_cstr(&b, "{");
-    jbuf_key(&b, "type"); jbuf_str(&b, "text"); jbuf_cstr(&b, ",");
-    jbuf_key(&b, "text"); jbuf_str(&b, xml_resp);
-    jbuf_cstr(&b, "}");
-    return b.buf;
-}
-
-static int dispatch_tool(const char *name, const JsonVal *input_obj,
-                         JsonBuf *out_b, OdooCtx *ctx, Arena *a)
+static int dispatch_tool(const char    *toolname,
+                         sj_Reader     *params_r,   /* positioned after "arguments":{  */
+                         sj_Value       args_obj,   /* the arguments object value      */
+                         const char    *req_start,  /* original request buffer start   */
+                         const char    *req_end,
+                         JsonBuf       *out_b,
+                         OdooCtx       *ctx,
+                         Arena         *a)
 {
     char odoo_resp[ODOO_RESP_MAX] = {0};
-    const char *model_s = NULL;
-    {
-        const JsonVal *m = json_get(input_obj, "model");
-        if (NULL == m || JSON_STRING != m->type) {
-            jbuf_cstr(out_b, "{\"isError\":true,\"content\":["
-                "{\"type\":\"text\",\"text\":\"missing required field: model\"}]}");
-            return (int)out_b->len;
-        }
-        model_s = arena_strdup(a, "");
-        (void)model_s;
-        /* extract as c-string */
-        char *ms = (char *)arena_alloc(a, m->u.s.len + 1);
-        memcpy(ms, m->u.s.data, m->u.s.len);
-        ms[m->u.s.len] = '\0';
-        model_s = ms;
+
+    /* Extract fields from the arguments object using sj_iter_object */
+    const char *model   = NULL;
+    const char *args    = "[]";
+    const char *kwargs  = "{}";
+
+    /* Collect all key/value pairs we need from arguments */
+    sj_Value domain_v   = {0}; bool have_domain   = false;
+    sj_Value fields_v   = {0}; bool have_fields    = false;
+    sj_Value limit_v    = {0}; bool have_limit     = false;
+    sj_Value offset_v   = {0}; bool have_offset    = false;
+    sj_Value order_v    = {0}; bool have_order     = false;
+    sj_Value values_v   = {0}; bool have_values    = false;
+    sj_Value attrs_v    = {0}; bool have_attrs     = false;
+    sj_Value ids_v      = {0}; bool have_ids       = false;
+
+    /* Re-parse the arguments object from its raw position */
+    sj_Reader ar = sj_reader(args_obj.start,
+                             (size_t)(req_end - args_obj.start));
+    sj_Value  aobj = sj_read(&ar);
+    if (SJ_OBJECT != aobj.type) {
+        jbuf_cstr(out_b,
+            "{\"isError\":true,\"content\":["
+            "{\"type\":\"text\",\"text\":\"arguments must be an object\"}]}");
+        return (int)out_b->len;
     }
 
-    const char *args   = "[]";
-    const char *kwargs = "{}";
+    sj_Value key, val;
+    while (sj_iter_object(&ar, aobj, &key, &val)) {
+        if (sj_eq(key, "model") && SJ_STRING == val.type) {
+            model = sj_dup(a, val);
+        } else if (sj_eq(key, "domain"))     { domain_v  = val; have_domain  = true; }
+        else if (sj_eq(key, "fields"))       { fields_v  = val; have_fields  = true; }
+        else if (sj_eq(key, "limit"))        { limit_v   = val; have_limit   = true; }
+        else if (sj_eq(key, "offset"))       { offset_v  = val; have_offset  = true; }
+        else if (sj_eq(key, "order"))        { order_v   = val; have_order   = true; }
+        else if (sj_eq(key, "values"))       { values_v  = val; have_values  = true; }
+        else if (sj_eq(key, "attributes"))   { attrs_v   = val; have_attrs   = true; }
+        else if (sj_eq(key, "record_ids"))   { ids_v     = val; have_ids     = true; }
+    }
 
-    if (0 == strcmp(name, "search_read_records")) {
-        /* args: [domain]  kwargs: {fields, limit, offset, order} */
-        const JsonVal *domain = json_get(input_obj, "domain");
-        args = domain ? jval_to_json(a, domain) : "[[]]";
-        /* Wrap in outer array */
-        args = arena_sprintf(a, "[%s]", args);
+    if (NULL == model) {
+        jbuf_cstr(out_b,
+            "{\"isError\":true,\"content\":["
+            "{\"type\":\"text\",\"text\":\"missing required field: model\"}]}");
+        return (int)out_b->len;
+    }
 
-        JsonBuf kb = jbuf_new(a, 512);
+    const char *method = NULL;
+
+    if (0 == strcmp(toolname, "search_read_records")) {
+        method = "search_read";
+        const char *dom = have_domain
+            ? sj_value_to_json(a, domain_v, req_end) : "[]";
+        args   = arena_sprintf(a, "[%s]", dom);
+
+        JsonBuf kb = jbuf_new(a, 256);
         jbuf_cstr(&kb, "{");
-
-        const JsonVal *fields = json_get(input_obj, "fields");
         jbuf_key(&kb, "fields");
-        jbuf_cstr(&kb, fields ? jval_to_json(a, fields) : "[\"id\",\"name\"]");
-
-        const JsonVal *limit = json_get(input_obj, "limit");
-        jbuf_cstr(&kb, ","); jbuf_key(&kb, "limit");
-        jbuf_int(&kb, limit ? (long long)limit->u.n : 80);
-
-        const JsonVal *offset = json_get(input_obj, "offset");
-        jbuf_cstr(&kb, ","); jbuf_key(&kb, "offset");
-        jbuf_int(&kb, offset ? (long long)offset->u.n : 0);
-
-        const JsonVal *order = json_get(input_obj, "order");
-        if (order && JSON_STRING == order->type) {
-            jbuf_cstr(&kb, ","); jbuf_key(&kb, "order");
-            jbuf_sv(&kb, order->u.s);
+        jbuf_cstr(&kb, have_fields
+            ? sj_value_to_json(a, fields_v, req_end)
+            : "[\"id\",\"name\"]");
+        jbuf_cstr(&kb, ",");
+        jbuf_key(&kb, "limit");
+        jbuf_int(&kb, have_limit ? sj_ll(limit_v) : 80);
+        jbuf_cstr(&kb, ",");
+        jbuf_key(&kb, "offset");
+        jbuf_int(&kb, have_offset ? sj_ll(offset_v) : 0);
+        if (have_order && SJ_STRING == order_v.type) {
+            jbuf_cstr(&kb, ",");
+            jbuf_key(&kb, "order");
+            jbuf_sj_str(&kb, order_v.start, order_v.end);
         }
         jbuf_cstr(&kb, "}");
         kwargs = kb.buf;
 
-    } else if (0 == strcmp(name, "get_model_fields")) {
+    } else if (0 == strcmp(toolname, "get_model_fields")) {
+        method = "fields_get";
         args   = "[[]]";
-        const JsonVal *attrs = json_get(input_obj, "attributes");
         kwargs = arena_sprintf(a, "{\"attributes\":%s}",
-                    attrs ? jval_to_json(a, attrs)
-                          : "[\"string\",\"type\",\"required\"]");
+            have_attrs
+                ? sj_value_to_json(a, attrs_v, req_end)
+                : "[\"string\",\"type\",\"required\"]");
 
-    } else if (0 == strcmp(name, "create_record")) {
-        const JsonVal *vals = json_get(input_obj, "values");
-        if (NULL == vals) {
-            jbuf_cstr(out_b, "{\"isError\":true,\"content\":["
+    } else if (0 == strcmp(toolname, "create_record")) {
+        method = "create";
+        if (!have_values) {
+            jbuf_cstr(out_b,
+                "{\"isError\":true,\"content\":["
                 "{\"type\":\"text\",\"text\":\"missing required field: values\"}]}");
             return (int)out_b->len;
         }
-        args   = arena_sprintf(a, "[%s]", jval_to_json(a, vals));
+        args   = arena_sprintf(a, "[%s]",
+                     sj_value_to_json(a, values_v, req_end));
         kwargs = "{}";
 
-    } else if (0 == strcmp(name, "update_record")) {
-        const JsonVal *ids  = json_get(input_obj, "record_ids");
-        const JsonVal *vals = json_get(input_obj, "values");
-        if (NULL == ids || NULL == vals) {
-            jbuf_cstr(out_b, "{\"isError\":true,\"content\":["
+    } else if (0 == strcmp(toolname, "update_record")) {
+        method = "write";
+        if (!have_ids || !have_values) {
+            jbuf_cstr(out_b,
+                "{\"isError\":true,\"content\":["
                 "{\"type\":\"text\","
                 "\"text\":\"missing required fields: record_ids, values\"}]}");
             return (int)out_b->len;
         }
         args   = arena_sprintf(a, "[%s,%s]",
-                    jval_to_json(a, ids), jval_to_json(a, vals));
+                     sj_value_to_json(a, ids_v,    req_end),
+                     sj_value_to_json(a, values_v, req_end));
         kwargs = "{}";
 
     } else {
-        jbuf_cstr(out_b, "{\"isError\":true,\"content\":["
+        jbuf_cstr(out_b,
+            "{\"isError\":true,\"content\":["
             "{\"type\":\"text\",\"text\":\"unknown tool\"}]}");
         return (int)out_b->len;
     }
 
-    int rc = odoo_execute(ctx, model_s,
-                          /* method */ (0 == strcmp(name, "search_read_records"))
-                              ? "search_read"
-                              : (0 == strcmp(name, "get_model_fields"))
-                              ? "fields_get"
-                              : (0 == strcmp(name, "create_record"))
-                              ? "create"
-                              : "write",
-                          args, kwargs,
+    int rc = odoo_execute(ctx, model, method, args, kwargs,
                           odoo_resp, sizeof odoo_resp, a);
 
-    const char *content = wrap_odoo_result(a, odoo_resp, rc);
-    jbuf_cstr(out_b, "{\"content\":[");
-    jbuf_cstr(out_b, content);
-    jbuf_cstr(out_b, "]}");
+    /* Wrap XML-RPC response as MCP content block */
+    jbuf_cstr(out_b, "{\"content\":[{\"type\":\"text\",\"text\":");
+    if (rc < 0) {
+        jbuf_str(out_b, "Odoo error — see server log");
+    } else {
+        jbuf_str(out_b, odoo_resp);
+    }
+    jbuf_cstr(out_b, "}]}");
     return (int)out_b->len;
 }
 
@@ -294,31 +377,44 @@ int mcp_handle(const char *req, size_t rlen,
                OdooCtx *ctx,
                Arena *a)
 {
-    char errbuf[128] = {0};
-    JsonVal *root = json_parse(req, rlen, a, errbuf, sizeof errbuf);
-    if (NULL == root) {
-        const char *e = "{\"jsonrpc\":\"2.0\",\"id\":null,"
-                        "\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}";
+    /* sj_reader requires a mutable char* — copy into arena scratch */
+    char *buf = (char *)arena_alloc(a, rlen + 1);
+    memcpy(buf, req, rlen);
+    buf[rlen] = '\0';
+
+    sj_Reader r   = sj_reader(buf, rlen);
+    sj_Value  root = sj_read(&r);
+    JsonBuf   b    = jbuf_new(a, 4096);
+
+    /* Parse error */
+    if (SJ_OBJECT != root.type) {
+        const char *e =
+            "{\"jsonrpc\":\"2.0\",\"id\":null,"
+            "\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}";
         size_t n = strlen(e);
         if (n < olen) memcpy(out, e, n + 1);
         return (int)n;
     }
 
-    const JsonVal *id     = json_get(root, "id");
-    const JsonVal *method = json_get(root, "method");
-    const JsonVal *params = json_get(root, "params");
+    /* Extract id, method, params from the top-level object */
+    sj_Value id     = { .type = SJ_NULL };
+    sj_Value method = { .type = SJ_NULL };
+    sj_Value params = { .type = SJ_NULL };
 
-    JsonBuf b = jbuf_new(a, 8192);
+    sj_Value key, val;
+    while (sj_iter_object(&r, root, &key, &val)) {
+        if (sj_eq(key, "id"))     id     = val;
+        if (sj_eq(key, "method")) method = val;
+        if (sj_eq(key, "params")) params = val;
+    }
 
-    if (NULL == method || JSON_STRING != method->type) {
+    if (SJ_STRING != method.type) {
         jrpc_err(&b, id, -32600, "Invalid Request");
         goto done;
     }
 
-    Sv m = method->u.s;
-
-    /* initialize */
-    if (sv_eq(m, SV_LIT("initialize"))) {
+    /* ── initialize ── */
+    if (sj_eq(method, "initialize")) {
         const char *result =
             "{"
               "\"protocolVersion\":\"" MCP_PROTO_VERSION "\","
@@ -332,48 +428,66 @@ int mcp_handle(const char *req, size_t rlen,
         goto done;
     }
 
-    /* initialized — notification, no response */
-    if (sv_eq(m, SV_LIT("notifications/initialized")) ||
-        sv_eq(m, SV_LIT("initialized"))) {
-        /* spec: server MUST NOT reply to notifications */
+    /* ── initialized (notification — no response) ── */
+    if (sj_eq(method, "notifications/initialized") ||
+        sj_eq(method, "initialized")) {
         return 0;
     }
 
-    /* tools/list */
-    if (sv_eq(m, SV_LIT("tools/list"))) {
+    /* ── tools/list ── */
+    if (sj_eq(method, "tools/list")) {
         const char *result = arena_sprintf(a, "{\"tools\":%s}", TOOLS_LIST);
         jrpc_ok(&b, id, result);
         goto done;
     }
 
-    /* tools/call */
-    if (sv_eq(m, SV_LIT("tools/call"))) {
-        if (NULL == params) {
-            jrpc_err(&b, id, -32602, "Invalid params: missing params");
+    /* ── tools/call ── */
+    if (sj_eq(method, "tools/call")) {
+        if (SJ_OBJECT != params.type) {
+            jrpc_err(&b, id, -32602, "Invalid params");
             goto done;
         }
-        const JsonVal *name_v  = json_get(params, "name");
-        const JsonVal *input_v = json_get(params, "arguments");
 
-        if (NULL == name_v || JSON_STRING != name_v->type) {
+        /* Parse params object for name + arguments */
+        sj_Reader pr = sj_reader(params.start,
+                                 (size_t)(buf + rlen - params.start));
+        sj_Value  pobj = sj_read(&pr);
+
+        sj_Value name_v = { .type = SJ_NULL };
+        sj_Value args_v = { .type = SJ_NULL };
+        sj_Value pk, pv;
+        while (sj_iter_object(&pr, pobj, &pk, &pv)) {
+            if (sj_eq(pk, "name"))      name_v = pv;
+            if (sj_eq(pk, "arguments")) args_v = pv;
+        }
+
+        if (SJ_STRING != name_v.type) {
             jrpc_err(&b, id, -32602, "Invalid params: missing tool name");
             goto done;
         }
 
         char toolname[64] = {0};
-        size_t tn = name_v->u.s.len < 63 ? name_v->u.s.len : 63;
-        memcpy(toolname, name_v->u.s.data, tn);
+        size_t tn = (size_t)(name_v.end - name_v.start);
+        if (tn >= sizeof toolname) tn = sizeof(toolname) - 1;
+        memcpy(toolname, name_v.start, tn);
+
+        /* Provide an empty object for arguments if omitted */
+        if (SJ_OBJECT != args_v.type) {
+            const char *empty = "{}";
+            args_v.type  = SJ_OBJECT;
+            args_v.start = (char *)empty;
+            args_v.end   = (char *)empty + 2;
+            args_v.depth = 0;
+        }
 
         JsonBuf tb = jbuf_new(a, 65536);
-        dispatch_tool(toolname,
-                      input_v && JSON_OBJECT == input_v->type ? input_v : NULL,
-                      &tb, ctx, a);
-
+        dispatch_tool(toolname, &pr, args_v,
+                      buf, buf + rlen, &tb, ctx, a);
         jrpc_ok(&b, id, tb.buf);
         goto done;
     }
 
-    /* Unknown method */
+    /* ── unknown method ── */
     jrpc_err(&b, id, -32601, "Method not found");
 
 done:

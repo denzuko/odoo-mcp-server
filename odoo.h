@@ -13,8 +13,10 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include "arena.h"
-#include "json.h"
 #include "config.h"
+
+/* json_to_xmlrpc is implemented in odoo.c using sj.h internally */
+const char *json_to_xmlrpc(Arena *a, const char *json_str);
 
 #define ODOO_RESP_MAX (256 * 1024)  /* 256 KiB max XML-RPC response */
 

@@ -29,6 +29,11 @@ POSSIBILITY OF SUCH DAMAGE.
 
 Vendored dependencies retain their original licenses:
 
+sj.h — Public Domain (Unlicense)
+  Copyright (c) rxi 2025
+  https://github.com/rxi/sj.h
+  This is free and unencumbered software released into the public domain.
+
 sv.h — MIT License
   Copyright (c) Alexey Kutepov <reximkut@gmail.com> (Tsoding)
   https://github.com/tsoding/sv
