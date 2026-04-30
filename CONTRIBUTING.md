@@ -49,6 +49,18 @@ This project follows the conventions in `main.c` and `mcp.c`:
 - No `system()`, `popen()`, or `exec*()` — enforced by Rego AST gate
 - `#ifdef __wasm__` appears **only** in `net.h` — nowhere else
 
+## Versioning
+
+This project uses `major.minor.patch` strictly:
+
+| Bump | When |
+|---|---|
+| **MAJOR** | Public interface break — `mcp_handle()` signature, `OdooCtx`/`McpToolRegistry` layout, MCP wire protocol incompatibility |
+| **MINOR** | New non-breaking capability — new tool, new Rego gate, new test file, new deploy target |
+| **PATCH** | Everything else — bug fix, docs, build, CI, labels, file layout. Patch easily exceeds 100. |
+
+Never bump major for internal restructuring. Never use minor as a release counter.
+
 ## Commit messages
 
 ```
