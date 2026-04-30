@@ -1,49 +1,71 @@
-# Dockerfile — odoo-mcp-server
-# Multi-stage: builder compiles the C binary, scratch final image ships it.
+# containers/Containerfile
 #
-# Build: docker build -t ghcr.io/denzuko/odoo-mcp-server:latest .
-# Run:   docker run --env-file odoo-mcp.env -p 127.0.0.1:8000:8000 \
-#                   ghcr.io/denzuko/odoo-mcp-server:latest
+# Pulls the pre-built, signed ELF binary from a GitHub Release.
+# Does NOT build from source — the CI pipeline builds, gates, signs,
+# and publishes. This image is the deployment artefact for preprod
+# (Podman quadlet, rootless). Prod (FreeBSD/NetBSD) uses the native
+# ELF directly via rc.d.
+#
+# Build:
+#   podman build \
+#     --build-arg RELEASE_TAG=v1.10.0 \
+#     -t ghcr.io/denzuko/odoo-mcp-server:v1.10.0 \
+#     -f containers/Containerfile .
+#
+# The image is built and pushed by CI (publish job) on every release tag.
 
-# ── Stage 1: build ────────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS builder
+ARG RELEASE_TAG=latest
+ARG GITHUB_REPO=denzuko/odoo-mcp-server
+
+# ── Stage 1: fetch + verify ──────────────────────────────────────────────
+FROM debian:bookworm-slim AS fetcher
+
+ARG RELEASE_TAG
+ARG GITHUB_REPO
 
 RUN apt-get update -q && \
     apt-get install -y --no-install-recommends \
-        gcc make libssl-dev ca-certificates curl git \
-        # kcgi not in debian — build from source
-        autoconf automake libtool pkg-config zlib1g-dev && \
+        curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Build kcgi from source (no debian package)
-RUN git clone --depth=1 https://github.com/kristapsdz/kcgi /tmp/kcgi && \
-    cd /tmp/kcgi && \
-    ./configure && make && make install && \
-    rm -rf /tmp/kcgi
+# Install cosign for signature verification
+RUN curl -sLo /usr/local/bin/cosign \
+      https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 && \
+    chmod +x /usr/local/bin/cosign
 
-WORKDIR /src
-COPY . .
+WORKDIR /dist
 
-# Vendor nob.h at build time if not present (CI already has it)
-RUN [ -f nob.h ] || curl -sLo nob.h \
-    https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
+# Download ELF binary and its cosign bundle from GitHub Release
+RUN BASE="https://github.com/${GITHUB_REPO}/releases/download/${RELEASE_TAG}" && \
+    curl -sLo odoo-mcp-server        "${BASE}/odoo-mcp-server" && \
+    curl -sLo odoo-mcp-server.bundle "${BASE}/odoo-mcp-server.bundle" && \
+    chmod +x odoo-mcp-server
 
-# Compile nob build driver then build the binary
-RUN gcc -std=c99 -D_POSIX_C_SOURCE=200809L -o nob nob.c && \
-    ./nob
+# Verify signature (keyless, Sigstore)
+RUN cosign verify-blob \
+      --bundle odoo-mcp-server.bundle \
+      --certificate-identity \
+        "https://github.com/${GITHUB_REPO}/.github/workflows/ci.yml@refs/tags/${RELEASE_TAG}" \
+      --certificate-oidc-issuer \
+        "https://token.actions.githubusercontent.com" \
+      odoo-mcp-server && \
+    echo "signature verified: odoo-mcp-server ${RELEASE_TAG}"
 
-# ── Stage 2: minimal runtime ──────────────────────────────────────────────
+# ── Stage 2: minimal runtime ─────────────────────────────────────────────
 FROM gcr.io/distroless/cc-debian12:nonroot AS final
+
+ARG RELEASE_TAG
 
 LABEL org.opencontainers.image.title="odoo-mcp-server" \
       org.opencontainers.image.description="MCP server for Odoo 15+ XML-RPC — C99/BCHS" \
       org.opencontainers.image.source="https://github.com/denzuko/odoo-mcp-server" \
       org.opencontainers.image.licenses="BSD-2-Clause" \
+      org.opencontainers.image.version="${RELEASE_TAG}" \
       maintainer="denzuko@dapla.net" \
       net.matrix.organization="Private Ops" \
       net.matrix.orgunit="Matrix NOC" \
       net.matrix.commonname="odoo-mcp-server" \
-      net.matrix.environment="production" \
+      net.matrix.environment="preprod" \
       net.matrix.application="odoo-mcp-server" \
       net.matrix.role="mcp-gateway" \
       net.matrix.owner="FC13F74B@matrix.net" \
@@ -52,19 +74,9 @@ LABEL org.opencontainers.image.title="odoo-mcp-server" \
       net.matrix.oid="iso.org.dod.internet.42387" \
       net.matrix.duns="iso.org.duns.039271257"
 
-COPY --from=builder /src/odoo-mcp-server /odoo-mcp-server
-# Copy shared libs required by libtls/kcgi
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libssl.so*    /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libcrypto.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/local/lib/libkcgi.so*              /usr/local/lib/
-COPY --from=builder /usr/local/lib/libkcgijson.so*          /usr/local/lib/
+COPY --from=fetcher /dist/odoo-mcp-server /odoo-mcp-server
 
-ENV PORT=8000 \
-    HOST=0.0.0.0
-
+ENV PORT=8000 HOST=0.0.0.0
 EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD ["/odoo-mcp-server", "--healthcheck"]
 
 ENTRYPOINT ["/odoo-mcp-server"]

@@ -1,0 +1,28 @@
+#!/bin/sh
+#
+# NetBSD rc.d script for odoo-mcp-server
+# /etc/rc.d/odoo_mcp
+#
+# Add to /etc/rc.conf: odoo_mcp=YES
+
+. /etc/rc.subr
+
+name="odoo_mcp"
+rcvar="${name}"
+command="/usr/local/sbin/odoo-mcp-server"
+odoo_mcp_env="${odoo_mcp_env:-/usr/local/etc/odoo-mcp/odoo-mcp.env}"
+odoo_mcp_user="${odoo_mcp_user:-odoo_mcp}"
+
+start_precmd="odoo_mcp_env_load"
+
+odoo_mcp_env_load()
+{
+    [ -r "${odoo_mcp_env}" ] || return 0
+    while IFS= read -r _line; do
+        case "${_line}" in ''|\#*) continue ;; esac
+        export "${_line}" 2>/dev/null || true
+    done < "${odoo_mcp_env}"
+}
+
+load_rc_config "${name}"
+run_rc_command "$1"

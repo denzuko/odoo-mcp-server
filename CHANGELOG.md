@@ -257,3 +257,60 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - CI, Terraform, .gitignore, README updated for build/ output paths.
 - env idiom: WASI_SDK passed via env VAR=... ./nob in CI.
+
+---
+
+## [1.11.0] — 2026-04-30
+
+### Changed
+
+- CI pipeline restructured into three explicit phases:
+  1. Build — native ELF + WASM module
+  2. Gate  — SBOM/CVE, C SAST, Terraform SAST, OPA policy (shift-left)
+  3. Publish — cosign sign, GitHub Release, GHCR image push (on semver tag)
+  Deployment jobs run AFTER publish and pull FROM signed locations.
+
+- publish job (new):
+    cosign sign-blob for ELF + WASM (keyless, Sigstore)
+    GitHub Release with ELF, WASM, bundles, SBOMs, SHA256SUMS
+    Container image pushed to GHCR, signed with cosign
+
+- terraform-deploy: now downloads and cosign-verifies .wasm from
+  GitHub Release before terraform apply. No longer depends on local
+  build/ output.
+
+- containers/Containerfile: rewritten. Stage 1 downloads signed ELF
+  from GitHub Release and cosign-verifies it. Stage 2 is distroless.
+  Does not build from source — CI builds, CI publishes.
+
+- odoo_mcp_setup.sh: rewritten for preprod bootstrap.
+  Adds ZFS dataset creation (SECTION 8) alongside service account,
+  linger, image pull, quadlet install. Explicit note: this is preprod,
+  not prod.
+
+- nob.c: header comment clarifies build driver only — not a task dag.
+  Deploy is separate (terraform/, odoo_mcp_setup.sh, deploy/).
+
+### Added
+
+- deploy/freebsd/odoo_mcp_deploy.sh — production deploy on FreeBSD.
+  Downloads signed ELF from GitHub Release via fetch(1), cosign
+  verifies, installs to /usr/local/sbin, installs rc.d unit.
+- deploy/freebsd/odoo_mcp.rc — FreeBSD rc.d service unit (rc.subr).
+- deploy/netbsd/odoo_mcp_deploy.sh — production deploy on NetBSD
+  (ftp(1) for HTTPS fetch, same cosign verification pattern).
+- deploy/netbsd/odoo_mcp.rc — NetBSD rc.d service unit.
+
+### Architecture
+
+```
+Pipeline (CI):
+  build → gate → publish (GitHub Release + GHCR, signed)
+
+Deploy (separate, pulls from signed locations):
+  edge    ← Terraform downloads .wasm from GitHub Release (cosign verified)
+  preprod ← Podman quadlet pulls image from GHCR
+  prod    ← FreeBSD/NetBSD rc.d downloads ELF from GitHub Release (cosign)
+```
+
+Prod target is FreeBSD or NetBSD. Linux is preprod only.

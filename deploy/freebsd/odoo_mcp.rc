@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# PROVIDE: odoo_mcp
+# REQUIRE: NETWORKING LOGIN
+# KEYWORD: shutdown
+#
+# Add to /etc/rc.conf:
+#   odoo_mcp_enable="YES"
+#
+# Options (rc.conf or environment):
+#   odoo_mcp_enable  — YES/NO
+#   odoo_mcp_user    — service account (default: odoo_mcp)
+#   odoo_mcp_env     — path to env file (default: /usr/local/etc/odoo-mcp/odoo-mcp.env)
+#   odoo_mcp_flags   — extra flags passed to the binary
+
+. /etc/rc.subr
+
+name="odoo_mcp"
+rcvar="odoo_mcp_enable"
+
+load_rc_config "${name}"
+
+: "${odoo_mcp_enable:=NO}"
+: "${odoo_mcp_user:=odoo_mcp}"
+: "${odoo_mcp_env:=/usr/local/etc/odoo-mcp/odoo-mcp.env}"
+: "${odoo_mcp_flags:=}"
+
+command="/usr/local/sbin/odoo-mcp-server"
+command_args="${odoo_mcp_flags}"
+
+# Load env file and export into environment
+if [ -r "${odoo_mcp_env}" ]; then
+    # Source each non-comment, non-blank line as an export
+    while IFS= read -r _line; do
+        case "${_line}" in
+            ''|\#*) continue ;;
+        esac
+        export "${_line}" 2>/dev/null || true
+    done < "${odoo_mcp_env}"
+fi
+
+start_precmd="odoo_mcp_precmd"
+stop_postcmd="odoo_mcp_postcmd"
+
+odoo_mcp_precmd()
+{
+    # pledge(2) surface — request only what is needed
+    # (applied inside the binary on pledge-capable systems)
+    :
+}
+
+odoo_mcp_postcmd()
+{
+    :
+}
+
+run_rc_command "$1"

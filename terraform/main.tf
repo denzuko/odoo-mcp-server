@@ -69,10 +69,29 @@ resource "cloudflare_worker" "odoo_mcp" {
 # the GitHub Actions runner which already has wrangler available via npx.
 
 locals {
-  # Hash both artifacts so any change re-triggers the deploy
+  # Download URL for the signed .wasm from GitHub Release
+  wasm_url = "https://github.com/${var.github_repo}/releases/download/${var.release_tag}/odoo-mcp-server.wasm"
+
+  # Hash worker.js — wrangler re-deploys when JS shim changes too
   worker_js_hash  = filesha256("${path.module}/../workers/worker.js")
-  wasm_hash       = fileexists("${path.module}/../build/odoo-mcp-server.wasm") ? filesha256("${path.module}/../build/odoo-mcp-server.wasm") : "no-wasm"
-  deploy_trigger  = sha256("${local.worker_js_hash}${local.wasm_hash}")
+  deploy_trigger  = sha256("${local.worker_js_hash}${var.release_tag}")
+}
+
+# Download and verify the signed WASM from GitHub Release before Terraform runs
+# cosign verify-blob is run in CI (terraform-deploy job) before terraform apply.
+# The local_file data source makes the .wasm available to wrangler via local-exec.
+resource "null_resource" "wasm_download" {
+  triggers = {
+    release_tag = var.release_tag
+  }
+
+  provisioner "local-exec" {
+    command = <<-SH
+      curl -sLo /tmp/odoo-mcp-server.wasm \
+        "${local.wasm_url}"
+      cp /tmp/odoo-mcp-server.wasm ${path.module}/../workers/odoo-mcp-server.wasm
+    SH
+  }
 }
 
 resource "null_resource" "wrangler_deploy" {
@@ -90,7 +109,7 @@ resource "null_resource" "wrangler_deploy" {
     }
   }
 
-  depends_on = [cloudflare_worker.odoo_mcp]
+  depends_on = [cloudflare_worker.odoo_mcp, null_resource.wasm_download]
 }
 
 # ── Secrets ───────────────────────────────────────────────────────────── #

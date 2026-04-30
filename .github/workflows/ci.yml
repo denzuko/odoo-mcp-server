@@ -1,5 +1,15 @@
 name: CI
 
+# Pipeline phases:
+#   1. build      — compile native ELF + WASM module
+#   2. gate       — SBOM, SAST, OPA policy checks (shift-left)
+#   3. publish    — sign artefacts, create GitHub Release, push container image
+#
+# Deployment is SEPARATE — Terraform/quadlets/rc.d pull from signed locations:
+#   CF Workers  ← Terraform downloads .wasm from GitHub Release
+#   Preprod     ← Quadlet pulls image from GHCR (tagged by release)
+#   Prod        ← FreeBSD/NetBSD rc.d downloads ELF from GitHub Release
+
 on:
   push:
     branches: ["main", "feat/**", "fix/**"]
@@ -7,10 +17,8 @@ on:
   pull_request:
     branches: ["main"]
 
-# Create a GitHub issue when any job fails on main
-# Reusable via: needs: [job], if: failure()
-
 jobs:
+  # ── Phase 1: Build ──────────────────────────────────────────────────────
   build-native:
     runs-on: ubuntu-latest
     steps:
@@ -20,17 +28,18 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends \
-            gcc make libssl-dev autoconf automake libtool pkg-config zlib1g-dev curl
+            gcc make libssl-dev autoconf automake libtool \
+            pkg-config zlib1g-dev curl
           git clone --depth=1 https://github.com/kristapsdz/kcgi /tmp/kcgi
           cd /tmp/kcgi && ./configure && make && sudo make install
 
       - name: Vendor nob.h
         run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
 
-      - name: Build nob driver (native)
+      - name: Bootstrap nob (native)
         run: cc nob.c -o nob
 
-      - name: Build native binary
+      - name: Build
         run: ./nob
 
       - uses: actions/upload-artifact@v4
@@ -44,10 +53,9 @@ jobs:
         with:
           script: |
             github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               title: `CI failure: build-native on ${context.sha.slice(0,7)}`,
-              body:  `build-native failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              body: `build-native failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
               labels: ['bug', 'ci'],
             })
 
@@ -67,10 +75,10 @@ jobs:
       - name: Vendor nob.h
         run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
 
-      - name: Build nob driver (wasm)
+      - name: Bootstrap nob (wasm)
         run: cc -Dwasm nob.c -o nob
 
-      - name: Build WASM module
+      - name: Build
         run: env WASI_SDK=/opt/wasi-sdk ./nob
 
       - uses: actions/upload-artifact@v4
@@ -84,73 +92,13 @@ jobs:
         with:
           script: |
             github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               title: `CI failure: build-wasm on ${context.sha.slice(0,7)}`,
-              body:  `build-wasm failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              body: `build-wasm failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
               labels: ['bug', 'ci'],
             })
 
-  docker:
-    runs-on: ubuntu-latest
-    needs: build-native
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      digest: ${{ steps.push.outputs.digest }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Vendor nob.h
-        run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/denzuko/odoo-mcp-server
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=sha-,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Build and push
-        id: push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: containers/Containerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              title: `CI failure: docker on ${context.sha.slice(0,7)}`,
-              body:  `docker build/push failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
-              labels: ['bug', 'ci'],
-            })
-
+  # ── Phase 2: Gate (shift-left) ──────────────────────────────────────────
   sbom:
     runs-on: ubuntu-latest
     needs: [build-native, build-wasm]
@@ -164,10 +112,10 @@ jobs:
             https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64
           chmod +x /usr/local/bin/osv-scanner
 
-      - name: cdxgen CycloneDX JSON
+      - name: cdxgen CycloneDX
         run: cdxgen -t c -o sbom.cdx.json --spec-version 1.6 .
 
-      - name: cdxgen SPDX JSON
+      - name: cdxgen SPDX
         run: |
           cdxgen -t c --output-format spdx-json \
             -o sbom.spdx.json --spec-version 1.6 . \
@@ -199,11 +147,10 @@ jobs:
         with:
           script: |
             github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               title: `CI failure: sbom on ${context.sha.slice(0,7)}`,
-              body:  `SBOM generation failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
-              labels: ['bug', 'ci'],
+              body: `SBOM/CVE gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              labels: ['bug', 'ci', 'security'],
             })
 
   sast-c:
@@ -213,7 +160,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get install -y cppcheck clang
 
-      - name: cppcheck
+      - name: cppcheck SARIF
         run: |
           cppcheck --enable=all --std=c99 --suppress=missingInclude \
             --inline-suppr --error-exitcode=0 \
@@ -229,7 +176,6 @@ jobs:
                      .inner[0].inner[0].referencedDecl.name?)}
             | select(.callee!=null)]' > ast_calls.json 2>/dev/null \
           || echo '[]' > ast_calls.json
-          echo "AST calls: $(jq length ast_calls.json)"
 
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -250,10 +196,9 @@ jobs:
         with:
           script: |
             github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               title: `CI failure: sast-c on ${context.sha.slice(0,7)}`,
-              body:  `C SAST failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              body: `C SAST gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               labels: ['bug', 'ci', 'security'],
             })
 
@@ -262,7 +207,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: KICS scan
+      - name: KICS scan SARIF
         run: |
           docker run --rm \
             -v "$(pwd)/terraform:/path" -v "$(pwd):/output" \
@@ -270,7 +215,6 @@ jobs:
               --report-formats sarif --output-path /output \
               --output-name kics-tf --exclude-severities info,low \
               --no-progress || true
-          # kics outputs kics-tf.sarif (no .json extension)
           [ -f kics-tf.sarif ] && cp kics-tf.sarif kics-tf.sarif.json || true
           python3 scripts/sarif_stub.py kics-tf.sarif.json kics
 
@@ -291,10 +235,9 @@ jobs:
         with:
           script: |
             github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               title: `CI failure: terraform-sast on ${context.sha.slice(0,7)}`,
-              body:  `Terraform SAST failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              body: `Terraform SAST gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               labels: ['bug', 'ci', 'security'],
             })
 
@@ -321,8 +264,9 @@ jobs:
         run: |
           terraform init -backend=false
           terraform validate
+          # Stub assets so plan can run without real build outputs
           mkdir -p ../workers && touch ../workers/worker.js
-          mkdir -p build && touch build/odoo-mcp-server.wasm
+          mkdir -p ../build  && touch ../build/odoo-mcp-server.wasm
           terraform plan -out=plan.tfplan 2>&1 | head -50 || true
           terraform show -json plan.tfplan > plan.json 2>/dev/null || \
             echo '{"resource_changes":[]}' > plan.json
@@ -352,10 +296,9 @@ jobs:
         with:
           script: |
             github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               title: `CI failure: terraform-plan on ${context.sha.slice(0,7)}`,
-              body:  `Terraform plan/conftest gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              body: `Terraform conftest gate failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               labels: ['bug', 'ci'],
             })
 
@@ -403,17 +346,141 @@ jobs:
         with:
           script: |
             github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               title: `CI failure: opa-gate on ${context.sha.slice(0,7)}`,
-              body:  `OPA policy gate failed — a security finding blocks merge.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              body: `OPA policy gate failed — security finding blocks release.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               labels: ['bug', 'ci', 'security'],
             })
 
-  terraform-deploy:
+  # ── Phase 3: Publish ────────────────────────────────────────────────────
+  # All gates passed. Sign artefacts and publish to signed locations.
+  # Deployment jobs (Terraform, quadlet update, rc.d update) pull FROM here.
+
+  publish:
     runs-on: ubuntu-latest
     needs: opa-gate
-    if: github.ref == 'refs/heads/main'
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write      # create GitHub Release
+      id-token: write      # cosign keyless signing
+      packages: write      # push to GHCR
+    outputs:
+      release_url: ${{ steps.release.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: odoo-mcp-native
+          path: dist/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: odoo-mcp-wasm
+          path: dist/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sbom-artifacts
+          path: dist/
+
+      # Sign the ELF and WASM with cosign keyless (Sigstore)
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign artefacts
+        run: |
+          cosign sign-blob --yes \
+            --bundle dist/odoo-mcp-server.bundle \
+            dist/odoo-mcp-server
+          cosign sign-blob --yes \
+            --bundle dist/odoo-mcp-server.wasm.bundle \
+            dist/odoo-mcp-server.wasm
+
+      # SHA-256 checksums
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum odoo-mcp-server odoo-mcp-server.wasm \
+            sbom.cdx.json sbom.spdx.json > SHA256SUMS
+
+      # GitHub Release with all signed artefacts
+      - name: Create GitHub Release
+        id: release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/odoo-mcp-server
+            dist/odoo-mcp-server.bundle
+            dist/odoo-mcp-server.wasm
+            dist/odoo-mcp-server.wasm.bundle
+            dist/sbom.cdx.json
+            dist/sbom.spdx.json
+            dist/SHA256SUMS
+
+      # Container image — built from Containerfile, binary copied from dist/
+      - name: Vendor nob.h (for Containerfile builder stage)
+        run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/denzuko/odoo-mcp-server
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push container image
+        id: image-push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: containers/Containerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            RELEASE_TAG=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Sign the container image digest with cosign keyless
+      - name: Sign container image
+        run: |
+          cosign sign --yes \
+            ghcr.io/denzuko/odoo-mcp-server@${{ steps.image-push.outputs.digest }}
+
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: `CI failure: publish on ${context.sha.slice(0,7)}`,
+              body: `Release publish failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              labels: ['bug', 'ci'],
+            })
+
+  # ── CF Workers deploy (Terraform) ───────────────────────────────────────
+  # Pulls signed .wasm from GitHub Release. Runs AFTER publish.
+  terraform-deploy:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
     environment: production
     env:
       TF_VAR_cloudflare_api_token:  ${{ secrets.CF_API_TOKEN }}
@@ -423,16 +490,35 @@ jobs:
       TF_VAR_odoo_db:               ${{ secrets.ODOO_DB }}
       TF_VAR_odoo_user:             ${{ secrets.ODOO_USER }}
       TF_VAR_odoo_api_key:          ${{ secrets.ODOO_API_KEY }}
+      TF_VAR_release_tag:           ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: odoo-mcp-wasm
-          path: .
+      - name: Install cosign + wrangler
+        run: |
+          npm install -g wrangler
+          # cosign for verification
+          curl -sLo /usr/local/bin/cosign \
+            https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
+          chmod +x /usr/local/bin/cosign
 
-      - name: Install wrangler
-        run: npm install -g wrangler
+      - name: Download and verify .wasm from GitHub Release
+        run: |
+          TAG=${{ github.ref_name }}
+          REPO="denzuko/odoo-mcp-server"
+          BASE="https://github.com/${REPO}/releases/download/${TAG}"
+
+          curl -sLo workers/odoo-mcp-server.wasm \
+            "${BASE}/odoo-mcp-server.wasm"
+          curl -sLo workers/odoo-mcp-server.wasm.bundle \
+            "${BASE}/odoo-mcp-server.wasm.bundle"
+
+          cosign verify-blob \
+            --bundle workers/odoo-mcp-server.wasm.bundle \
+            --certificate-identity "https://github.com/${REPO}/.github/workflows/ci.yml@refs/tags/${TAG}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            workers/odoo-mcp-server.wasm
+          echo "wasm signature verified"
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -446,18 +532,18 @@ jobs:
           terraform output mcp_endpoint
 
       - name: Open issue on failure
-        if: failure() && github.ref == 'refs/heads/main'
+        if: failure()
         uses: actions/github-script@v7
         with:
           script: |
             github.rest.issues.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
+              owner: context.repo.owner, repo: context.repo.repo,
               title: `CI failure: terraform-deploy on ${context.sha.slice(0,7)}`,
-              body:  `Production deploy failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nCommit: ${context.sha}`,
+              body: `CF Workers deploy failed.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               labels: ['bug', 'ci', 'production'],
             })
 
+  # ── GitHub Pages ────────────────────────────────────────────────────────
   pages:
     runs-on: ubuntu-latest
     needs: opa-gate

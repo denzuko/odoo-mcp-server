@@ -1,17 +1,23 @@
 /*
- * nob.c — build driver for odoo-mcp-server
+ * nob.c — COMPILE-TIME BUILD DRIVER for odoo-mcp-server
+ *
+ * This is a build driver only — it compiles source into binaries.
+ * It is NOT a task runner, DAG, or deployment tool.
+ * Deployment is handled by:
+ *   CF Workers  — terraform/ (pulls .wasm from GitHub Release)
+ *   Preprod     — odoo_mcp_setup.sh (pulls image from GHCR)
+ *   Prod FreeBSD — deploy/freebsd/odoo_mcp_deploy.sh (pulls ELF from GitHub Release)
+ *   Prod NetBSD  — deploy/netbsd/odoo_mcp_deploy.sh
  *
  * Bootstrap:
  *   cc nob.c -o nob            # native target
  *   cc -Dwasm nob.c -o nob     # wasm32-wasi target
  *
  * Run:
- *   ./nob                      # build TARGET
- *   ./nob clean                # remove build artefacts
+ *   ./nob                      # build → build/TARGET
+ *   ./nob clean                # remove build/ artefacts
  *
- * All target-specific definitions live in config.h:
- *   TARGET, CC_INPUTS, CC_EXTRA, LINK_FLAGS, LINK_LIBS
- *   BUILD_FOLDER, SRC_FOLDER
+ * All target-specific definitions live in config.h.
  *
  * Da Planet Security / denzuko <denzuko@dapla.net>
  * BSD 2-Clause License
