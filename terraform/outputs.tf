@@ -1,6 +1,6 @@
 output "worker_name" {
   description = "Deployed Worker name"
-  value       = cloudflare_worker.odoo_mcp.name
+  value       = cloudflare_workers_script.odoo_mcp.name
 }
 
 output "mcp_endpoint" {
