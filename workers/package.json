@@ -1,8 +1,0 @@
-{
-  "name": "odoo-mcp-worker",
-  "version": "1.0.0",
-  "private": true,
-  "dependencies": {
-    "@cloudflare/workers-wasi": "0.0.5"
-  }
-}

@@ -35,5 +35,3 @@ env/odoo-mcp.env.live
 workers/.dev.vars
 build/
 terraform/terraform.cdx.json
-workers/node_modules/
-workers/package-lock.json

@@ -60,4 +60,11 @@ int mcp_handle(const char *req, size_t rlen,
                const McpToolRegistry *reg,
                Arena *a);
 
+#ifdef __wasm__
+/* WASM reactor exports — called by workers/worker.js */
+void  _initialize(void);
+void *mcp_alloc(size_t n);
+int   mcp_handle_wasm(const char *req, size_t rlen, char *out, size_t olen);
+#endif
+
 #endif /* MCP_H */

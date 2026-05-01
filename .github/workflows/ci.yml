@@ -522,9 +522,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: |
-          npm install
-          wrangler deploy --name odoo-mcp-server
+        run: wrangler deploy --name odoo-mcp-server
 
       - uses: actions/upload-artifact@v4
         if: always()

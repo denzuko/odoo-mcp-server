@@ -25,7 +25,12 @@
 #  define CC_INPUTS  "impl.c", "mcp.c", "odoo.c"
 #  define CC_EXTRA   "--target=wasm32-wasi", "-D__wasm__", \
                      "-mexec-model=reactor"
-#  define LINK_FLAGS "-Wl,--export=mcp_handle", "-Wl,--no-entry"
+#  define LINK_FLAGS \
+    "-Wl,--export=mcp_handle_wasm", \
+    "-Wl,--export=mcp_alloc", \
+    "-Wl,--export=_initialize", \
+    "-Wl,--export=memory", \
+    "-Wl,--no-entry"
 #  define LINK_LIBS  /* none */
 #else
 #  define TARGET     "odoo-mcp-server"

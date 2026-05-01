@@ -534,3 +534,43 @@ done:
     out[b.len] = '\0';
     return (int)b.len;
 }
+
+#ifdef __wasm__
+/* ── WASM reactor exports ────────────────────────────────────────────────── *
+ *
+ * Called by workers/worker.js JS shim.
+ * _initialize() is called once by the reactor runtime on module load.
+ * mcp_alloc(n)  allocates n bytes from the root arena — used by the JS
+ *               shim to obtain request/response buffer pointers in linear
+ *               memory without heap allocation.
+ */
+
+/* Root arena and registry — live for the reactor lifetime */
+static Arena          _wasm_root = {0};
+static Arena          _wasm_req  = {0};
+static McpToolRegistry _wasm_reg  = {0};
+static OdooCtx        _wasm_ctx  = {0};
+
+__attribute__((export_name("_initialize")))
+void _initialize(void)
+{
+    mcp_registry_init(&_wasm_reg, &_wasm_root);
+}
+
+__attribute__((export_name("mcp_alloc")))
+void *mcp_alloc(size_t n)
+{
+    return arena_alloc(&_wasm_root, n);
+}
+
+__attribute__((export_name("mcp_handle")))
+int mcp_handle_wasm(const char *req, size_t rlen,
+                    char *out, size_t olen)
+{
+    Arena_Mark m = arena_snapshot(&_wasm_req);
+    int n = mcp_handle(req, rlen, out, olen, &_wasm_ctx, &_wasm_reg, &_wasm_req);
+    arena_rewind(&_wasm_req, m);
+    return n;
+}
+
+#endif /* __wasm__ */
