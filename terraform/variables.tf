@@ -8,6 +8,7 @@ variable "github_repo" {
   type        = string
   default     = "denzuko/odoo-mcp-server"
 }
+variable "cloudflare_api_token" {
   description = "Cloudflare API token with Workers:Edit + Zone:Read permissions"
   type        = string
   sensitive   = true

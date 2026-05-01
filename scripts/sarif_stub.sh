@@ -14,7 +14,7 @@ TOOL="${2:-$(basename "${FILE:-stub}")}"
 
 [ -n "$FILE" ] || { echo "usage: sarif_stub.sh <file> [tool]" >&2; exit 1; }
 
-STUB='{"version":"2.1.0","runs":[]}'
+STUB='{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"osv-scanner","rules":[]}},"results":[]}]}'
 
 if [ ! -f "$FILE" ] || [ ! -s "$FILE" ]; then
     printf '%s\n' "$STUB" > "$FILE"
