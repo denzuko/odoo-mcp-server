@@ -296,6 +296,9 @@ jobs:
       - name: Validate all Rego policies
         run: opa check policy/
 
+      - name: Policy BDD tests
+        run: sh scripts/check_policy.sh
+
       - uses: actions/download-artifact@v4
         with:
           pattern: "*-artifacts"

@@ -570,6 +570,8 @@ TEST(keys_table_has_body_key)
 
 
 
+/* ── Runner ──────────────────────────────────────────────────────────── */
+
 int main(void)
 {
     printf("odoo-mcp-server xUnit test suite\n");
