@@ -37,26 +37,17 @@ cc -Dwasm nob.c -o nob  # wasm target && ./nob
 ./nob clean
 ```
 
-## Run (native)
-
-```sh
-env ODOO_URL=https://dapla.net \
-    ODOO_DB=your_database \
-    ODOO_USER=you@dapla.net \
-    ODOO_API_KEY=your_api_key \
-    ./odoo-mcp-server
-```
-
-## Server deploy (Podman Quadlet)
+## Run (native) and Server deploy (Podman Quadlet)
 
 ```sh
 # As root — creates odoo-mcp service account, installs quadlet units,
 # generates env file, starts service, smoke-tests /healthz
-ODOO_URL=https://dapla.net \
-ODOO_DB=your_db \
-ODOO_USER=you@dapla.net \
-ODOO_API_KEY=your_key \
-  sudo ./odoo_mcp_setup.sh
+machinectl shell root@ env \
+    ODOO_URL=https://dapla.net \
+    ODOO_DB=your_db \
+    ODOO_USER=you@dapla.net \
+    ODOO_API_KEY=your_key \
+./odoo_mcp_setup.sh
 ```
 
 The container image is built by CI and pushed to
@@ -73,8 +64,7 @@ Add the HAProxy stanza from `examples/haproxy-odoo-mcp.cfg` to route
 cc -Dwasm nob.c -o nob  # wasm target && ./nob
 
 # Deploy via Terraform (wrangler called via local-exec)
-cd terraform/
-terraform init && terraform apply
+echo init apply | xargs -n1 -I... -- terraform --chdir=terraform/...
 ```
 
 See `docs/secrets.md` for required GitHub Actions secrets and
