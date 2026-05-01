@@ -50,53 +50,18 @@ resource "cloudflare_workers_script" "odoo_mcp" {
   }
 }
 
-# ── Wrangler deploy via local-exec ────────────────────────────────────── #
-
-locals {
-  wasm_url       = "https://github.com/${var.github_repo}/releases/download/${var.release_tag}/odoo-mcp-server.wasm"
-  worker_js_hash = filesha256("${path.module}/../workers/worker.js")
-  deploy_trigger = sha256("${local.worker_js_hash}${var.release_tag}")
-}
-
-resource "null_resource" "wasm_download" {
-  triggers = { release_tag = var.release_tag }
-
-  provisioner "local-exec" {
-    command = "curl -sLo ${path.module}/../workers/odoo-mcp.wasm '${local.wasm_url}'"
-  }
-}
-
-resource "null_resource" "wrangler_deploy" {
-  triggers = {
-    deploy_hash = local.deploy_trigger
-    script_name = cloudflare_workers_script.odoo_mcp.name
-  }
-
-  provisioner "local-exec" {
-    working_dir = "${path.module}/../workers"
-    command     = "npx wrangler@latest deploy --name ${cloudflare_workers_script.odoo_mcp.name}"
-    environment = {
-      CLOUDFLARE_API_TOKEN  = var.cloudflare_api_token
-      CLOUDFLARE_ACCOUNT_ID = var.cloudflare_account_id
-    }
-  }
-
-  depends_on = [cloudflare_workers_script.odoo_mcp, null_resource.wasm_download]
-}
-
 # ── Route ─────────────────────────────────────────────────────────────── #
 
 resource "cloudflare_workers_route" "odoo_mcp" {
   zone_id     = var.cloudflare_zone_id
   pattern     = var.worker_route
   script_name = cloudflare_workers_script.odoo_mcp.name
-  depends_on  = [null_resource.wrangler_deploy]
 }
 
 # ── CycloneDX SBOM ────────────────────────────────────────────────────── #
 
 resource "null_resource" "sbom" {
-  triggers = { worker_deploy = null_resource.wrangler_deploy.id }
+  triggers = { script_id = cloudflare_workers_script.odoo_mcp.id }
 
   provisioner "local-exec" {
     working_dir = path.module

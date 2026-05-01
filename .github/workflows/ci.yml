@@ -495,8 +495,6 @@ jobs:
       TF_VAR_odoo_db:               ${{ secrets.ODOO_DB }}
       TF_VAR_odoo_user:             ${{ secrets.ODOO_USER }}
       TF_VAR_odoo_api_key:          ${{ secrets.ODOO_API_KEY }}
-      TF_VAR_release_tag:           ${{ github.ref_name }}
-      TF_VAR_github_repo:           denzuko/odoo-mcp-server
     steps:
       - uses: actions/checkout@v4
 
@@ -513,6 +511,19 @@ jobs:
           terraform init
           terraform apply -auto-approve
           terraform output mcp_endpoint
+
+      - name: Download WASM from release
+        run: |
+          curl -sLo workers/odoo-mcp.wasm \
+            "https://github.com/denzuko/odoo-mcp-server/releases/download/${{ github.ref_name }}/odoo-mcp-server.wasm"
+
+      - name: Wrangler deploy
+        working-directory: workers/
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: |
+          wrangler deploy --name odoo-mcp-server
 
       - uses: actions/upload-artifact@v4
         if: always()

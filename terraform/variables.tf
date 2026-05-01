@@ -1,13 +1,3 @@
-variable "release_tag" {
-  description = "GitHub release tag to deploy (e.g. v1.10.0)"
-  type        = string
-}
-
-variable "github_repo" {
-  description = "GitHub repo for release downloads"
-  type        = string
-  default     = "denzuko/odoo-mcp-server"
-}
 variable "cloudflare_api_token" {
   description = "Cloudflare API token with Workers:Edit + Zone:Read permissions"
   type        = string
