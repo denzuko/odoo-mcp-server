@@ -354,7 +354,6 @@ jobs:
           name: sbom-artifacts
           path: dist/
 
-      # Sign the ELF and WASM with cosign keyless (Sigstore)
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
@@ -367,14 +366,12 @@ jobs:
             --bundle dist/odoo-mcp-server.wasm.bundle \
             dist/odoo-mcp-server.wasm
 
-      # SHA-256 checksums
       - name: Generate checksums
         run: |
           cd dist
           sha256sum odoo-mcp-server odoo-mcp-server.wasm \
             sbom.cdx.json sbom.spdx.json > SHA256SUMS
 
-      # GitHub Release with all signed artefacts
       - name: Create GitHub Release
         id: release
         uses: softprops/action-gh-release@v2
@@ -388,10 +385,6 @@ jobs:
             dist/sbom.cdx.json
             dist/sbom.spdx.json
             dist/SHA256SUMS
-
-      # Container image — built from Containerfile, binary copied from dist/
-      - name: Vendor nob.h (for Containerfile builder stage)
-        run: curl -sLo nob.h https://raw.githubusercontent.com/tsoding/nob.h/main/nob.h
 
       - name: Docker meta
         id: meta
@@ -427,39 +420,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Sign the container image digest with cosign keyless
       - name: Sign container image
         run: |
           cosign sign --yes \
             ghcr.io/denzuko/odoo-mcp-server@${{ steps.image-push.outputs.digest }}
 
+  terraform-deploy:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: production
+    env:
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
+      TF_VAR_cloudflare_api_token:  ${{ secrets.CF_API_TOKEN }}
+      TF_VAR_cloudflare_account_id: ${{ secrets.CF_ACCOUNT_ID }}
+      TF_VAR_cloudflare_zone_id:    ${{ secrets.CF_ZONE_ID }}
+      TF_VAR_odoo_url:              ${{ secrets.ODOO_URL }}
+      TF_VAR_odoo_db:               ${{ secrets.ODOO_DB }}
+      TF_VAR_odoo_user:             ${{ secrets.ODOO_USER }}
+      TF_VAR_odoo_api_key:          ${{ secrets.ODOO_API_KEY }}
+      TF_VAR_release_tag:           ${{ github.ref_name }}
+      TF_VAR_github_repo:           denzuko/odoo-mcp-server
+    steps:
       - uses: actions/checkout@v4
-
-      - name: Install cosign + wrangler
-        run: |
-          npm install -g wrangler
-          # cosign for verification
-          curl -sLo /usr/local/bin/cosign \
-            https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64
-          chmod +x /usr/local/bin/cosign
-
-      - name: Download and verify .wasm from GitHub Release
-        run: |
-          TAG=${{ github.ref_name }}
-          REPO="denzuko/odoo-mcp-server"
-          BASE="https://github.com/${REPO}/releases/download/${TAG}"
-
-          curl -sLo workers/odoo-mcp-server.wasm \
-            "${BASE}/odoo-mcp-server.wasm"
-          curl -sLo workers/odoo-mcp-server.wasm.bundle \
-            "${BASE}/odoo-mcp-server.wasm.bundle"
-
-          cosign verify-blob \
-            --bundle workers/odoo-mcp-server.wasm.bundle \
-            --certificate-identity "https://github.com/${REPO}/.github/workflows/ci.yml@refs/tags/${TAG}" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            workers/odoo-mcp-server.wasm
-          echo "wasm signature verified"
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -481,6 +464,18 @@ jobs:
           name: terraform-sbom
           path: terraform/terraform.cdx.json
 
+  pages:
+    runs-on: ubuntu-latest
+    needs: opa-gate
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
