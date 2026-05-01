@@ -1,12 +1,12 @@
 # main.tf — Cloudflare Workers deployment for odoo-mcp-server
 #
-# Provider v5 resource names (v5.5+ — cloudflare_workers_* removed):
-#   cloudflare_worker         — Worker script existence
-#   cloudflare_worker_secret  — encrypted secrets (was cloudflare_workers_secret)
-#   cloudflare_worker_route   — route pattern   (was cloudflare_workers_route)
+# Provider v4 — pinned because v5 Workers resources are actively being
+# stabilised. v4 resource names:
+#   cloudflare_worker        — Worker existence (account + name)
+#   cloudflare_workers_secret — encrypted secrets (v4 name; NOT worker_secret)
+#   cloudflare_workers_route  — route pattern   (v4 name)
 #
-# Code upload via wrangler local-exec until provider issue #6852 is resolved.
-#
+# Code upload via wrangler local-exec (provider issue #6852 still open).
 # Tracker: https://github.com/cloudflare/terraform-provider-cloudflare/issues/6852
 
 provider "cloudflare" {
@@ -57,9 +57,9 @@ resource "null_resource" "wrangler_deploy" {
   depends_on = [cloudflare_worker.odoo_mcp, null_resource.wasm_download]
 }
 
-# ── Secrets (cloudflare_worker_secret — v5 name) ──────────────────────── #
+# ── Secrets (v4: cloudflare_workers_secret) ───────────────────────────── #
 
-resource "cloudflare_worker_secret" "odoo_url" {
+resource "cloudflare_workers_secret" "odoo_url" {
   account_id  = var.cloudflare_account_id
   script_name = cloudflare_worker.odoo_mcp.name
   name        = "ODOO_URL"
@@ -67,7 +67,7 @@ resource "cloudflare_worker_secret" "odoo_url" {
   depends_on  = [cloudflare_worker.odoo_mcp]
 }
 
-resource "cloudflare_worker_secret" "odoo_db" {
+resource "cloudflare_workers_secret" "odoo_db" {
   account_id  = var.cloudflare_account_id
   script_name = cloudflare_worker.odoo_mcp.name
   name        = "ODOO_DB"
@@ -75,7 +75,7 @@ resource "cloudflare_worker_secret" "odoo_db" {
   depends_on  = [cloudflare_worker.odoo_mcp]
 }
 
-resource "cloudflare_worker_secret" "odoo_user" {
+resource "cloudflare_workers_secret" "odoo_user" {
   account_id  = var.cloudflare_account_id
   script_name = cloudflare_worker.odoo_mcp.name
   name        = "ODOO_USER"
@@ -83,7 +83,7 @@ resource "cloudflare_worker_secret" "odoo_user" {
   depends_on  = [cloudflare_worker.odoo_mcp]
 }
 
-resource "cloudflare_worker_secret" "odoo_api_key" {
+resource "cloudflare_workers_secret" "odoo_api_key" {
   account_id  = var.cloudflare_account_id
   script_name = cloudflare_worker.odoo_mcp.name
   name        = "ODOO_API_KEY"
@@ -91,7 +91,7 @@ resource "cloudflare_worker_secret" "odoo_api_key" {
   depends_on  = [cloudflare_worker.odoo_mcp]
 }
 
-resource "cloudflare_worker_secret" "cors_origins" {
+resource "cloudflare_workers_secret" "cors_origins" {
   account_id  = var.cloudflare_account_id
   script_name = cloudflare_worker.odoo_mcp.name
   name        = "CORS_ORIGINS"
@@ -99,9 +99,9 @@ resource "cloudflare_worker_secret" "cors_origins" {
   depends_on  = [cloudflare_worker.odoo_mcp]
 }
 
-# ── Route (cloudflare_worker_route — v5 name) ─────────────────────────── #
+# ── Route (v4: cloudflare_workers_route) ──────────────────────────────── #
 
-resource "cloudflare_worker_route" "odoo_mcp" {
+resource "cloudflare_workers_route" "odoo_mcp" {
   zone_id    = var.cloudflare_zone_id
   pattern    = var.worker_route
   script     = cloudflare_worker.odoo_mcp.name
@@ -129,5 +129,5 @@ resource "null_resource" "sbom" {
     SH
   }
 
-  depends_on = [cloudflare_worker_route.odoo_mcp]
+  depends_on = [cloudflare_workers_route.odoo_mcp]
 }
