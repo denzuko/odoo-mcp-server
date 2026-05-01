@@ -1,0 +1,22 @@
+# workers/wrangler.toml — Cloudflare Workers deploy config
+#
+# worker.js uses ES module syntax (import/export default).
+# WASM imported as a static ES module: import wasm from "./odoo-mcp-server.wasm"
+# Secrets managed by Terraform secret_text_binding blocks.
+#
+# Da Planet Security / denzuko <denzuko@dapla.net>
+
+name               = "odoo-mcp-server"
+main               = "worker.js"
+compatibility_date = "2025-03-01"
+
+# Treat .wasm files as WebAssembly modules for static import
+[[rules]]
+type    = "CompiledWasm"
+globs   = ["**/*.wasm"]
+fallthrough = false
+
+[vars]
+NET_MATRIX_APPLICATION = "odoo-mcp-server"
+NET_MATRIX_ORGUNIT     = "Matrix NOC"
+NET_MATRIX_COSTCENTER  = "INT-01"

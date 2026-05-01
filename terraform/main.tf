@@ -62,7 +62,7 @@ resource "null_resource" "wasm_download" {
   triggers = { release_tag = var.release_tag }
 
   provisioner "local-exec" {
-    command = "curl -sLo ${path.module}/../workers/odoo-mcp-server.wasm '${local.wasm_url}'"
+    command = "curl -sLo ${path.module}/../workers/odoo-mcp.wasm '${local.wasm_url}'"
   }
 }
 

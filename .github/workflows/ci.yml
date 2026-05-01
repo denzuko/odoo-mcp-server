@@ -225,10 +225,54 @@ jobs:
           sarif_file: kics-tf.sarif.json
           category: kics-terraform
 
+      - name: tfsec SARIF
+        run: |
+          docker run --rm \
+            -v "$(pwd)/terraform:/src" \
+            aquasec/tfsec:latest /src \
+              --format sarif --out /src/tfsec.sarif.json || true
+          [ -f terraform/tfsec.sarif.json ] && \
+            cp terraform/tfsec.sarif.json tfsec.sarif.json || true
+          sh scripts/sarif_stub.sh tfsec.sarif.json tfsec
+
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: tfsec.sarif.json
+          category: tfsec
+
+      - name: infracost breakdown
+        env:
+          INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
+        run: |
+          if [ -n "$INFRACOST_API_KEY" ]; then
+            curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh \
+              | sh -s -- --no-sudo
+            infracost breakdown \
+              --path terraform/ \
+              --format json \
+              --out-file infracost.json \
+              --terraform-var "cloudflare_api_token=placeholder" \
+              --terraform-var "cloudflare_account_id=placeholder" \
+              --terraform-var "cloudflare_zone_id=placeholder" \
+              --terraform-var "odoo_url=placeholder" \
+              --terraform-var "odoo_db=placeholder" \
+              --terraform-var "odoo_user=placeholder" \
+              --terraform-var "odoo_api_key=placeholder" \
+              --terraform-var "release_tag=v0.0.0" || true
+          else
+            echo '{"projects":[{"breakdown":{"totalMonthlyCost":"0","resources":[]}}]}' \
+              > infracost.json
+            echo "INFRACOST_API_KEY not set — skipping cost estimate"
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: tf-sast-artifacts
-          path: kics-tf.sarif.json
+          path: |
+            kics-tf.sarif.json
+            tfsec.sarif.json
+            infracost.json
 
 
   terraform-plan:
@@ -318,6 +362,18 @@ jobs:
           opa eval -d policy/terraform_sast.rego -i kics-tf.sarif.json \
             --fail-defined 'data.odoo_mcp.terraform_sast.violations[_]' && \
             echo "terraform_sast: PASS"
+
+      - name: tfsec gate
+        run: |
+          opa eval -d policy/tfsec.rego -i tfsec.sarif.json \
+            --fail-defined 'data.odoo_mcp.tfsec.violations[_]' && \
+            echo "tfsec: PASS"
+
+      - name: infracost gate
+        run: |
+          opa eval -d policy/infracost.rego -i infracost.json \
+            --fail-defined 'data.odoo_mcp.infracost.violations[_]' && \
+            echo "infracost: PASS"
 
       - name: sarif CVE gate
         run: |
