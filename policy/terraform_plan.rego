@@ -25,7 +25,7 @@ import future.keywords.in
 deny[msg] if {
     r := input.resource_changes[_]
     r.change.actions[_] in {"create", "update"}
-    r.type != "cloudflare_worker_secret"
+    r.type != "cloudflare_workers_script"
     _ = r.change.after.secret_text
     msg := sprintf(
         "DENY: plaintext 'text' field in non-secret resource %v (%v)",
@@ -37,10 +37,10 @@ deny[msg] if {
 deny[msg] if {
     r := input.resource_changes[_]
     r.change.actions[_] in {"create", "update"}
-    r.type == "cloudflare_worker_secret"
+    r.type == "cloudflare_workers_script"
     not r.change.after_sensitive.secret_text == true
     msg := sprintf(
-        "DENY: cloudflare_worker_secret %v — 'text' not marked sensitive",
+        "DENY: cloudflare_workers_script %v — 'text' not marked sensitive",
         [r.address])
 }
 
@@ -49,7 +49,7 @@ deny[msg] if {
 deny[msg] if {
     r := input.resource_changes[_]
     r.change.actions[_] in {"create", "update"}
-    r.type == "cloudflare_worker_route"
+    r.type == "cloudflare_workers_route"
     pattern := r.change.after.pattern
     not startswith(pattern, "mcp.dapla.net")
     msg := sprintf(
@@ -76,7 +76,7 @@ deny[msg] if {
 deny[msg] if {
     r := input.resource_changes[_]
     r.change.actions[_] == "delete"
-    r.type == "cloudflare_worker_secret"
+    r.type == "cloudflare_workers_script"
     not r.change.before.labels["da_planet_approved_destroy"] == "true"
     msg := sprintf(
         "DENY: destroying %v requires label 'da_planet_approved_destroy=true'",
@@ -102,11 +102,11 @@ deny[msg] if {
     routes := [r |
         r := input.resource_changes[_]
         r.change.actions[_] in {"create", "update"}
-        r.type == "cloudflare_worker_route"
+        r.type == "cloudflare_workers_route"
     ]
     count(routes) > 1
     msg := sprintf(
-        "DENY: %v cloudflare_worker_route in plan — maximum 1 allowed",
+        "DENY: %v cloudflare_workers_route in plan — maximum 1 allowed",
         [count(routes)])
 }
 
@@ -126,10 +126,10 @@ warn[msg] if {
     secrets := [r |
         r := input.resource_changes[_]
         r.change.actions[_] in {"create", "update"}
-        r.type == "cloudflare_worker_secret"
+        r.type == "cloudflare_workers_script"
     ]
     count(secrets) == 0
-    msg := "WARN: no cloudflare_worker_secret in plan — Odoo creds may be missing"
+    msg := "WARN: no cloudflare_workers_script in plan — Odoo creds may be missing"
 }
 
 # ── Summary ──────────────────────────────────────────────────────────── #
