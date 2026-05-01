@@ -252,7 +252,7 @@ jobs:
       - name: tf init + validate + plan
         working-directory: terraform/
         run: |
-          terraform init -backend=false
+          TF_CLI_ARGS_init="-backend=false" terraform init
           terraform validate
           # Stub assets so plan can run without real build outputs
           mkdir -p ../workers && touch ../workers/worker.js

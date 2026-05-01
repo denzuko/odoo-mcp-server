@@ -8,45 +8,42 @@
 #   terraform show -json plan.tfplan > plan.json
 #   conftest test plan.json --policy policy/ --namespace odoo_mcp.terraform_plan
 #
-# Usage (OPA direct):
-#   opa eval -d policy/terraform_plan.rego -i plan.json \
-#     --fail-defined 'data.odoo_mcp.terraform_plan.deny[_]'
-#
 # Da Planet Security / denzuko <denzuko@dapla.net>
 # BSD 2-Clause License
 
 package odoo_mcp.terraform_plan
 
+import future.keywords.contains
 import future.keywords.if
 import future.keywords.in
 
-# ── Rule 1: plaintext secret field outside workers_secret resource ───── #
+# ── Rule 1: plaintext secret field outside workers_script resource ────── #
 
-deny[msg] if {
+deny contains msg if {
     r := input.resource_changes[_]
     r.change.actions[_] in {"create", "update"}
     r.type != "cloudflare_workers_script"
     _ = r.change.after.secret_text
     msg := sprintf(
-        "DENY: plaintext 'text' field in non-secret resource %v (%v)",
+        "DENY: plaintext 'secret_text' field in non-script resource %v (%v)",
         [r.address, r.type])
 }
 
-# ── Rule 2: workers_secret.secret_text must be marked sensitive in plan ──────── #
+# ── Rule 2: workers_script secret_text_binding must be sensitive in plan  #
 
-deny[msg] if {
+deny contains msg if {
     r := input.resource_changes[_]
     r.change.actions[_] in {"create", "update"}
     r.type == "cloudflare_workers_script"
-    not r.change.after_sensitive.secret_text == true
+    not r.change.after_sensitive.secret_text_binding == true
     msg := sprintf(
-        "DENY: cloudflare_workers_script %v — 'text' not marked sensitive",
+        "DENY: cloudflare_workers_script %v — secret_text_binding not marked sensitive",
         [r.address])
 }
 
 # ── Rule 3: route patterns must be under mcp.dapla.net ───────────────── #
 
-deny[msg] if {
+deny contains msg if {
     r := input.resource_changes[_]
     r.change.actions[_] in {"create", "update"}
     r.type == "cloudflare_workers_route"
@@ -59,11 +56,12 @@ deny[msg] if {
 
 # ── Rule 4: compatibility_date must be 2024 or newer ─────────────────── #
 
-deny[msg] if {
+deny contains msg if {
     r := input.resource_changes[_]
     r.change.actions[_] in {"create", "update"}
-    r.type == "cloudflare_worker_version"
+    r.type == "cloudflare_workers_script"
     date := r.change.after.compatibility_date
+    date != null
     year := to_number(substring(date, 0, 4))
     year < 2024
     msg := sprintf(
@@ -71,9 +69,9 @@ deny[msg] if {
         [date])
 }
 
-# ── Rule 5: destroying secrets requires approval label ───────────────── #
+# ── Rule 5: destroying script requires approval label ─────────────────── #
 
-deny[msg] if {
+deny contains msg if {
     r := input.resource_changes[_]
     r.change.actions[_] == "delete"
     r.type == "cloudflare_workers_script"
@@ -83,22 +81,22 @@ deny[msg] if {
         [r.address])
 }
 
-# ── Rule 6: Worker name must start with odoo-mcp ────────────────────── #
+# ── Rule 6: Worker name must start with odoo-mcp ─────────────────────── #
 
-deny[msg] if {
+deny contains msg if {
     r := input.resource_changes[_]
     r.change.actions[_] in {"create", "update"}
-    r.type == "cloudflare_worker"
+    r.type == "cloudflare_workers_script"
     name := r.change.after.name
     not startswith(name, "odoo-mcp")
     msg := sprintf(
-        "DENY: cloudflare_worker name '%v' must start with 'odoo-mcp'",
+        "DENY: cloudflare_workers_script name '%v' must start with 'odoo-mcp'",
         [name])
 }
 
-# ── Rule 7: max one route per deployment ─────────────────────────────── #
+# ── Rule 7: max one route per deployment ──────────────────────────────── #
 
-deny[msg] if {
+deny contains msg if {
     routes := [r |
         r := input.resource_changes[_]
         r.change.actions[_] in {"create", "update"}
@@ -110,29 +108,30 @@ deny[msg] if {
         [count(routes)])
 }
 
-# ── Warnings (non-blocking) ──────────────────────────────────────────── #
+# ── Warnings (non-blocking) ───────────────────────────────────────────── #
 
-warn[msg] if {
+warn contains msg if {
     r := input.resource_changes[_]
     r.change.actions[_] in {"create", "update"}
-    r.type == "cloudflare_worker_version"
+    r.type == "cloudflare_workers_script"
     date := r.change.after.compatibility_date
+    date != null
     year := to_number(substring(date, 0, 4))
     year < 2025
     msg := sprintf("WARN: compatibility_date '%v' — consider 2025+", [date])
 }
 
-warn[msg] if {
-    secrets := [r |
+warn contains msg if {
+    scripts := [r |
         r := input.resource_changes[_]
         r.change.actions[_] in {"create", "update"}
         r.type == "cloudflare_workers_script"
     ]
-    count(secrets) == 0
+    count(scripts) == 0
     msg := "WARN: no cloudflare_workers_script in plan — Odoo creds may be missing"
 }
 
-# ── Summary ──────────────────────────────────────────────────────────── #
+# ── Summary ───────────────────────────────────────────────────────────── #
 
 summary := {
     "pass":       count(deny) == 0,
