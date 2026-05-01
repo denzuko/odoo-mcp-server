@@ -15,7 +15,12 @@
 #define BUILD_FOLDER "build/"
 #define SRC_FOLDER   ""          /* sources at project root */
 
-#ifdef __wasm__
+/* Build target selection: set by nob.c compile flag
+ *   cc nob.c -o nob          → native (no flag)
+ *   cc -Dwasm nob.c -o nob   → wasm32-wasi
+ * Note: runtime source files use #ifdef __wasm__ (set by -D__wasm__ in CC_EXTRA).
+ * nob.c itself uses #ifdef wasm (set by -Dwasm at driver compile time). */
+#ifdef wasm
 #  define TARGET     "odoo-mcp-server.wasm"
 #  define CC_INPUTS  "impl.c", "mcp.c", "odoo.c"
 #  define CC_EXTRA   "--target=wasm32-wasi", "-D__wasm__", \

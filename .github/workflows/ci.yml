@@ -18,8 +18,9 @@ on:
     branches: ["main"]
 
 permissions:
-  contents: read
-  issues:   write
+  contents:        read
+  issues:          write
+  security-events: write   # github/codeql-action/upload-sarif
 
 jobs:
   # ── Phase 1: Build ──────────────────────────────────────────────────────
