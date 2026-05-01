@@ -551,8 +551,8 @@ static Arena          _wasm_req  = {0};
 static McpToolRegistry _wasm_reg  = {0};
 static OdooCtx        _wasm_ctx  = {0};
 
-__attribute__((export_name("_initialize")))
-void _initialize(void)
+__attribute__((export_name("mcp_init")))
+void mcp_init(void)
 {
     mcp_registry_init(&_wasm_reg, &_wasm_root);
 }

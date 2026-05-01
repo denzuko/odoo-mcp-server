@@ -28,7 +28,7 @@
 #  define LINK_FLAGS \
     "-Wl,--export=mcp_handle_wasm", \
     "-Wl,--export=mcp_alloc", \
-    "-Wl,--export=_initialize", \
+    "-Wl,--export=mcp_init", \
     "-Wl,--export=memory", \
     "-Wl,--no-entry"
 #  define LINK_LIBS  /* none */

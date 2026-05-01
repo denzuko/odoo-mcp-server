@@ -110,8 +110,8 @@ async function getInstance(env) {
 
   const mod = await WebAssembly.instantiate(wasm, imports);
   instance = mod.instance;
-  // Reactor: call _initialize once to set up arena and registry
-  if (instance.exports._initialize) instance.exports._initialize();
+  // Reactor: call mcp_init once to set up arena and registry
+  if (instance.exports.mcp_init) instance.exports.mcp_init();
   return instance;
 }
 
