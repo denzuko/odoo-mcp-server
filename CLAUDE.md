@@ -19,7 +19,23 @@ targets (native FreeBSD ELF + wasm32-wasi for Cloudflare Workers).
 - **Deploy**: Terraform + `local-exec wrangler` for CF Workers
 - **Policy**: OPA/Rego — `opa eval --fail-defined violations[_]`
 - **SBOM**: cdxgen → CycloneDX + SPDX; osv-scanner CVE → SARIF
-- **SAST**: cppcheck (C), KICS (Terraform HCL)
+- **SAST**: cppcheck (C), KICS + tfsec (Terraform HCL)
+- **Cost**: infracost breakdown → JSON
+
+## Policy gates (OPA/Rego)
+
+All gates run in CI `opa-gate` job. Input files produced by prior jobs.
+
+| Gate file | Input | Blocks on |
+|---|---|---|
+| `c_quality.rego` | `cppcheck.sarif.json` | cppcheck findings |
+| `code_conventions.rego` | `ast_calls.json` | banned C calls (system, malloc, gets, etc.) |
+| `containers.rego` | `containers_check.json` | missing net.matrix labels, docker.io, insecure quadlet |
+| `sarif.rego` | `osv.sarif.json` | CVE CVSS ≥ 7.0 |
+| `terraform_plan.rego` | `plan.json` (conftest) | insecure TF resource config |
+| `terraform_sast.rego` | `kics-tf.sarif.json` | KICS findings |
+| `tfsec.rego` | `tfsec.sarif.json` | tfsec CRITICAL/HIGH/error |
+| `infracost.rego` | `infracost.json` | monthly cost > $50 or resource > $25 |
 
 ## Arena pattern (tsoding/arena.h)
 
@@ -47,6 +63,27 @@ rc_release(t);   /* release — frees at count 0 */
 ```
 
 `RC_IMPLEMENTATION` defined once in `main.c`.
+
+## WASM reactor exports
+
+Built with `-mexec-model=reactor`. Exported symbols (defined in `mcp.c` behind `#ifdef __wasm__`):
+
+```
+mcp_init()              — called once by worker.js after instantiate()
+mcp_alloc(n)            — allocates n bytes from root arena; returns ptr in linear memory
+mcp_handle_wasm(r,rl,o,ol) — dispatches one MCP request; returns response length
+```
+
+`memory` is **not** exported via `--export` — the linker exports it implicitly.
+`--export=memory` causes `wasm-ld: error: symbol not found`.
+
+`config.h` `LINK_FLAGS` (wasm target):
+```
+-Wl,--export=mcp_handle_wasm
+-Wl,--export=mcp_alloc
+-Wl,--export=mcp_init
+-Wl,--no-entry
+```
 
 ## Static data pattern
 

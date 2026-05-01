@@ -150,3 +150,13 @@ never appear in `terraform.tfstate` in plaintext (`sensitive = true`).
 - `terraform/*.tfstate`, `terraform/plan.json`, `terraform/plan.tfplan`
 - `workers/.dev.vars`
 - Any file containing a real `ODOO_API_KEY` or `CF_API_TOKEN`
+
+### Infracost (optional — cost estimation)
+
+| Secret | Description | How to obtain |
+|---|---|---|
+| `INFRACOST_API_KEY` | Infracost cloud API key | app.infracost.io → Org settings → API keys |
+
+If `INFRACOST_API_KEY` is not set, the infracost step emits a zero-cost stub
+and the gate passes. Cost estimation is advisory; set the key to get real
+Cloudflare Workers pricing data.

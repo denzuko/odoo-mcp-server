@@ -384,3 +384,37 @@ Prod target is FreeBSD or NetBSD. Linux is preprod only.
 - docs/secrets.md: complete secrets reference added for CF Workers
   (Cloudflare API token scopes), GitHub tokens (GITHUB_TOKEN vs PAT),
   and Terraform Cloud workspace token.
+
+---
+
+## [1.2.0] — 2026-05-01
+
+### Added
+- policy/sarif.rego — CVE CVSS gate for osv-scanner SARIF (blocks CVSS ≥ 7.0)
+- policy/code_conventions.rego — banned C call gate on ast_calls.json
+- policy/infracost.rego — monthly cost threshold gate ($50 total, $25/resource)
+- policy/tfsec.rego — tfsec SARIF gate (CRITICAL/HIGH/error level)
+- Rego v1 `contains` keyword throughout all gates (was violations[msg] if)
+- 7 new tests: 3 odoo dispatch coverage, 4 WASM reactor contract (48/48)
+- workers/wrangler.toml — wrangler deploy config with CompiledWasm rule
+
+### Changed
+- CI terraform-sast: tfsec docker scan + infracost breakdown added
+- CI opa-gate: code_conventions, tfsec, infracost gates added
+- worker.js: @cloudflare/workers-wasi removed — native WebAssembly APIs only
+- mcp.c: WASM reactor exports (_initialize renamed mcp_init to avoid
+  wasi-sdk duplicate symbol; mcp_alloc, mcp_handle_wasm added)
+- config.h: --export=memory removed (implicit, causes wasm-ld error)
+- Terraform: wrangler local-exec removed — wrangler runs as CI step
+- Terraform: cloudflare provider pinned to ~> 4.0 (v5 Workers unstable)
+- terraform/main.tf: cloudflare_workers_script + cloudflare_workers_route
+  (verified against registry.terraform.io/providers/cloudflare/cloudflare/4.47+)
+
+### Fixed
+- publish job: removed duplicate checkout, duplicate cosign, terraform apply
+- terraform-deploy: separate job with production environment gate
+- sarif_stub.sh: stub emits non-empty runs array (CodeQL upload requirement)
+- codeql-action: v3 → v4 (v3 deprecated Dec 2026)
+- WASM build: nob.c uses $WASI_SDK/bin/clang not cc (GCC rejects wasm flags)
+- wasi-sdk: symlink path fixed (extracts to wasi-sdk-N.0-x86_64-linux/)
+- variables.tf: missing variable "cloudflare_api_token" { opening line
