@@ -89,8 +89,17 @@ static bool build(void)
 
     Nob_Cmd cmd = {0};
 
-    /* Compiler */
+#ifdef wasm
+    /* WASM target must use wasi-sdk clang — not the system cc (GCC).
+     * GCC does not understand --target=wasm32-wasi or -mexec-model=reactor.
+     * WASI_SDK env var must be set before running the wasm nob. */
+    const char *sdk = getenv("WASI_SDK");
+    if (NULL == sdk || '\0' == sdk[0]) sdk = "/opt/wasi-sdk";
+    const char *clang = nob_temp_sprintf("%s/bin/clang", sdk);
+    nob_cmd_append(&cmd, clang);
+#else
     nob_cc(&cmd);
+#endif
 
     /* Standard warning flags */
     nob_cc_flags(&cmd);

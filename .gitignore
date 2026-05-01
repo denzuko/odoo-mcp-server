@@ -34,3 +34,4 @@ __pycache__/
 env/odoo-mcp.env.live
 workers/.dev.vars
 build/
+terraform/terraform.cdx.json

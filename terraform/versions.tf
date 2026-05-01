@@ -1,10 +1,14 @@
 terraform {
-  required_version = ">= 1.9.0"
+  required_version = ">= 1.15.0"
 
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 5.0"
+      version = "~> 5.19"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
     }
   }
 
@@ -17,8 +21,9 @@ terraform {
   # }
   #
   # backend "s3" {
-  #   bucket = "da-planet-tfstate"
-  #   key    = "odoo-mcp-server/terraform.tfstate"
-  #   region = "us-east-1"
+  #   bucket         = "da-planet-tfstate"
+  #   key            = "odoo-mcp-server/terraform.tfstate"
+  #   region         = "us-east-1"
+  #   encrypt        = true
   # }
 }

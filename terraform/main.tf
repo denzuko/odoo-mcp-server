@@ -171,3 +171,36 @@ resource "cloudflare_workers_route" "odoo_mcp" {
   script     = cloudflare_worker.odoo_mcp.name
   depends_on = [null_resource.wrangler_deploy]
 }
+
+# ── CycloneDX SBOM ────────────────────────────────────────────────────── #
+# Generated after every apply. Records Terraform provider versions,
+# the deployed Worker artifact, and Cloudflare resource identifiers.
+# Consumed by the CI OPA sarif.rego CVE gate (osv-scanner --sbom).
+#
+# Requires: cdxgen (npm install -g @cyclonedx/cdxgen) on the apply runner.
+# The sbom is written to terraform/terraform.cdx.json and uploaded as a
+# CI artefact by the terraform-deploy job.
+
+resource "null_resource" "sbom" {
+  triggers = {
+    worker_deploy = null_resource.wrangler_deploy.id
+  }
+
+  provisioner "local-exec" {
+    working_dir = path.module
+    command     = <<-SH
+      if command -v cdxgen >/dev/null 2>&1; then
+        cdxgen -t terraform \
+          -o terraform.cdx.json \
+          --spec-version 1.6 \
+          --project-name odoo-mcp-server-tf \
+          --project-version "${cloudflare_worker.odoo_mcp.name}" \
+          . && echo "SBOM: terraform.cdx.json written"
+      else
+        echo "WARNING: cdxgen not found — skipping Terraform SBOM"
+      fi
+    SH
+  }
+
+  depends_on = [cloudflare_workers_route.odoo_mcp]
+}

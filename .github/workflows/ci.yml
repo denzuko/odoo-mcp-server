@@ -247,7 +247,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.x"
+          terraform_version: "1.15.x"
 
       - name: tf init + validate + plan
         working-directory: terraform/
@@ -457,7 +457,10 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.x"
+          terraform_version: "1.15.x"
+
+      - name: Install wrangler + cdxgen
+        run: npm install -g wrangler @cyclonedx/cdxgen
 
       - name: Terraform init + apply
         working-directory: terraform/
@@ -465,6 +468,12 @@ jobs:
           terraform init
           terraform apply -auto-approve
           terraform output mcp_endpoint
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terraform-sbom
+          path: terraform/terraform.cdx.json
 
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
