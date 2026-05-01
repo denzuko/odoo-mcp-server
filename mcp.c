@@ -242,6 +242,8 @@ static int dispatch_tool(const char    *toolname,
                          OdooCtx       *ctx,
                          Arena         *a)
 {
+    (void)params_r;    /* reserved for future streaming parse */
+    (void)req_start;   /* full request start — used by sj_value_to_json via req_end */
     char odoo_resp[ODOO_RESP_MAX] = {0};
 
     /* Extract fields from the arguments object using sj_iter_object */
