@@ -128,7 +128,7 @@ jobs:
             --output=osv.sarif.json || true
           sh scripts/sarif_stub.sh osv.sarif.json osv-scanner
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: osv.sarif.json
@@ -167,7 +167,7 @@ jobs:
             | select(.callee!=null)]' > ast_calls.json 2>/dev/null \
           || echo '[]' > ast_calls.json
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: cppcheck.sarif.json
@@ -219,7 +219,7 @@ jobs:
           [ -f kics-tf.sarif ] && cp kics-tf.sarif kics-tf.sarif.json || true
           sh scripts/sarif_stub.sh kics-tf.sarif.json kics
 
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: kics-tf.sarif.json
