@@ -20,7 +20,9 @@ provider "cloudflare" {
 resource "cloudflare_workers_script" "odoo_mcp" {
   account_id = var.cloudflare_account_id
   name       = var.worker_name
-  content    = "// placeholder — wrangler manages actual content"
+  # Minimal valid Worker — wrangler overwrites with actual WASM module.
+  # Cloudflare rejects scripts with no event handler (error 10021).
+  content    = "addEventListener('fetch',e=>e.respondWith(new Response('initializing',{status:503})))"
 
   secret_text_binding {
     name = "ODOO_URL"
