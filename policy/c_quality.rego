@@ -23,6 +23,7 @@
 
 package odoo_mcp.c_quality
 
+import future.keywords.contains
 import future.keywords.if
 import future.keywords.in
 
@@ -94,7 +95,7 @@ style_rules := {
 # ── Violations ────────────────────────────────────────────────────────────── #
 
 # Security / correctness hard blocks
-violations[msg] if {
+violations contains msg if {
     run    := input.runs[_]
     result := run.results[_]
     result.ruleId in blocked_rules
@@ -107,7 +108,7 @@ violations[msg] if {
 }
 
 # Severity-level blocks (error level from any tool)
-violations[msg] if {
+violations contains msg if {
     run    := input.runs[_]
     result := run.results[_]
     result.level in blocked_levels
@@ -121,7 +122,7 @@ violations[msg] if {
 }
 
 # Style rule violations (treated as errors in our pipeline)
-violations[msg] if {
+violations contains msg if {
     run    := input.runs[_]
     result := run.results[_]
     result.ruleId in style_rules
@@ -134,7 +135,7 @@ violations[msg] if {
 }
 
 # CVSS-scored CVE findings (from osv-scanner if mixed into SARIF)
-violations[msg] if {
+violations contains msg if {
     run    := input.runs[_]
     result := run.results[_]
     cvss   := to_number(object.get(result.properties, "cvss", "0"))

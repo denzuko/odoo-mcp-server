@@ -24,6 +24,7 @@
 
 package odoo_mcp.containers
 
+import future.keywords.contains
 import future.keywords.if
 import future.keywords.in
 
@@ -63,7 +64,7 @@ required_container_fields := {
 # ── Violations ──────────────────────────────────────────────────────── #
 
 # Containerfile must have all required OCI + net.matrix labels
-violations[msg] if {
+violations contains msg if {
     label := required_oci_labels[_]
     cf    := input.containerfile.content
     not contains(cf, label)
@@ -71,7 +72,7 @@ violations[msg] if {
 }
 
 # Containerfile must not reference docker.io — GHCR only
-violations[msg] if {
+violations contains msg if {
     cf := input.containerfile.content
     contains(cf, "docker.io")
     msg := "Containerfile references docker.io — use ghcr.io only"
@@ -79,14 +80,14 @@ violations[msg] if {
 
 # Containerfile FROM must use distroless or debian base, not alpine
 # (our binary links against glibc, musl will fail)
-violations[msg] if {
+violations contains msg if {
     cf := input.containerfile.content
     contains(cf, "FROM alpine")
     msg := "Containerfile uses alpine — binary requires glibc (use distroless or debian)"
 }
 
 # Each quadlet unit must have net.matrix labels
-violations[msg] if {
+violations contains msg if {
     unit  := input.units[_]
     label := required_quadlet_labels[_]
     not contains(unit.content, label)
@@ -94,7 +95,7 @@ violations[msg] if {
 }
 
 # Container unit must have WantedBy=default.target (not multi-user.target)
-violations[msg] if {
+violations contains msg if {
     unit := input.units[_]
     contains(unit.name, ".container")
     contains(unit.content, "WantedBy=multi-user.target")
@@ -102,14 +103,14 @@ violations[msg] if {
 }
 
 # Container unit must not reference docker.io
-violations[msg] if {
+violations contains msg if {
     unit := input.units[_]
     contains(unit.content, "docker.io")
     msg := sprintf("%v references docker.io — GHCR only", [unit.name])
 }
 
 # EnvironmentFile must use %h (home-relative), not absolute /etc/ or /home/
-violations[msg] if {
+violations contains msg if {
     unit := input.units[_]
     contains(unit.name, ".container")
     contains(unit.content, "EnvironmentFile=")
@@ -118,7 +119,7 @@ violations[msg] if {
 }
 
 # Container unit must have NoNewPrivileges
-violations[msg] if {
+violations contains msg if {
     unit := input.units[_]
     contains(unit.name, ".container")
     not contains(unit.content, "NoNewPrivileges=true")
@@ -126,7 +127,7 @@ violations[msg] if {
 }
 
 # Container unit must drop all capabilities
-violations[msg] if {
+violations contains msg if {
     unit := input.units[_]
     contains(unit.name, ".container")
     not contains(unit.content, "DropCapability=ALL")

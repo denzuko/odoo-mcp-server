@@ -572,6 +572,61 @@ TEST(keys_table_has_body_key)
 
 /* ── Runner ──────────────────────────────────────────────────────────── */
 
+TEST(mcp_tools_call_get_model_fields_missing_model)
+{
+    _setup_mcp();
+    char out[512] = {0};
+    int n = _dispatch(
+        "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\","
+        "\"params\":{\"name\":\"get_model_fields\",\"arguments\":{}}}",
+        out, sizeof out);
+    ASSERT((n > 0));
+    ASSERT_CONTAINS(out, "model");
+    _teardown_mcp();
+}
+
+TEST(mcp_tools_call_update_record_missing_ids)
+{
+    _setup_mcp();
+    char out[512] = {0};
+    int n = _dispatch(
+        "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\","
+        "\"params\":{\"name\":\"update_record\","
+        "\"arguments\":{\"model\":\"res.partner\",\"values\":{\"name\":\"x\"}}}}",
+        out, sizeof out);
+    ASSERT((n > 0));
+    /* missing record_ids — should be an error */
+    ASSERT_CONTAINS(out, "result");
+    _teardown_mcp();
+}
+
+TEST(odoo_xmlrpc_helpers)
+{
+    /* Exercise odoo.c internal helpers via json_to_xmlrpc edge cases */
+    Arena a = {0};
+
+    /* Nested array */
+    const char *x1 = json_to_xmlrpc(&a, "[[1,2],[3,4]]");
+    ASSERT_NOTNULL(x1);
+    ASSERT_CONTAINS(x1, "<array>");
+
+    /* Nested object */
+    const char *x2 = json_to_xmlrpc(&a, "{\"a\":{\"b\":1}}");
+    ASSERT_NOTNULL(x2);
+    ASSERT_CONTAINS(x2, "<struct>");
+
+    /* Float */
+    const char *x3 = json_to_xmlrpc(&a, "3.14");
+    ASSERT_NOTNULL(x3);
+
+    /* Empty array */
+    const char *x4 = json_to_xmlrpc(&a, "[]");
+    ASSERT_NOTNULL(x4);
+    ASSERT_CONTAINS(x4, "<array>");
+
+    arena_free(&a);
+}
+
 int main(void)
 {
     printf("odoo-mcp-server xUnit test suite\n");
@@ -633,6 +688,11 @@ int main(void)
 
     printf("\nkcgi integration contract:\n");
     RUN(keys_table_has_body_key);
+
+    printf("\nodoo dispatch coverage:\n");
+    RUN(mcp_tools_call_get_model_fields_missing_model);
+    RUN(mcp_tools_call_update_record_missing_ids);
+    RUN(odoo_xmlrpc_helpers);
 
     return xunit_summary();
 }

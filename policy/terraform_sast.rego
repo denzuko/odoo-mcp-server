@@ -20,6 +20,7 @@
 
 package odoo_mcp.terraform_sast
 
+import future.keywords.contains
 import future.keywords.if
 import future.keywords.in
 
@@ -64,7 +65,7 @@ allowed_exceptions := {
 
 # ── Violations ──────────────────────────────────────────────────────── #
 
-violations[msg] if {
+violations contains msg if {
     run    := input.runs[_]
     result := run.results[_]
     result.level in blocked_levels
@@ -77,7 +78,7 @@ violations[msg] if {
          result.message.text])
 }
 
-violations[msg] if {
+violations contains msg if {
     run    := input.runs[_]
     result := run.results[_]
     sev    := object.get(result.properties, "severity", "")
@@ -92,7 +93,7 @@ violations[msg] if {
          result.message.text])
 }
 
-violations[msg] if {
+violations contains msg if {
     run    := input.runs[_]
     result := run.results[_]
     result.ruleId in blocked_queries

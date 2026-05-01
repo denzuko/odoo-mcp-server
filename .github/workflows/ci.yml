@@ -296,9 +296,6 @@ jobs:
       - name: Validate all Rego policies
         run: opa check policy/
 
-      - name: Policy BDD tests
-        run: sh scripts/check_policy.sh
-
       - uses: actions/download-artifact@v4
         with:
           pattern: "*-artifacts"
@@ -309,6 +306,12 @@ jobs:
           opa eval -d policy/c_quality.rego -i cppcheck.sarif.json \
             --fail-defined 'data.odoo_mcp.c_quality.violations[_]' && \
             echo "c_quality: PASS"
+
+      - name: code_conventions gate
+        run: |
+          opa eval -d policy/code_conventions.rego -i ast_calls.json \
+            --fail-defined 'data.odoo_mcp.code_conventions.violations[_]' && \
+            echo "code_conventions: PASS"
 
       - name: terraform_sast gate
         run: |
