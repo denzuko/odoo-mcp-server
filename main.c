@@ -13,6 +13,7 @@
 /* tsoding/arena.h and tsoding/rc.h implementations live in impl.c */
 #include "arena.h"
 #include "rc.h"
+#include "matrix_id.h"  /* net.matrix identity strings — baked into binary */
 
 #include <sys/types.h>  /* ssize_t — must precede kcgi.h on Linux */
 #include <stddef.h>

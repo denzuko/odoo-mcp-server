@@ -14,22 +14,29 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `matrix_id.h` — `volatile const char[]` identity strings embedded in every
+  compiled binary at build time. Extractable via `strings(1)` or `objdump -s`
+  for change item attribution and provenance attestation without executing the
+  binary. DPS-constant values defined in header; per-binary values
+  (`application`, `role`, `version`, `environment`) injected by `nob.c` via
+  `-D` flags from `config.h`. Included by `main.c` as canonical owner TU.
+- `config.h` — `MATRIX_FLAGS` macro added to `CC_EXTRA` for both native and
+  WASM targets. `MCP_SERVER_VER` moved above build config block as single
+  source of truth for version across `net.matrix.version`, MCP handshake,
+  and binary strings.
+- `policy/c_quality.rego` — `required_matrix_prefixes` gate added. Verifies
+  seven `net.matrix.*` strings survived linking in the compiled binary.
+  Consumes `binary_strings` array injected by CI `strings(1)` extraction step.
 - `policy/slsa.rego` — OPA Rego gate enforcing SLSA provenance attachment
-  on release events and non-zero slsa-verifier exit code. Three deny rules:
-  release without provenance, push to main without provenance workflow
-  triggered, slsa-verifier non-zero exit.
+  on release events and non-zero slsa-verifier exit code.
 - `tests.c` — two SLSA provenance path tests (`slsa_binary_output_path_is_deterministic`,
-  `slsa_hash_output_path_is_deterministic`). Use `fopen()`+`fseek(-1,SEEK_END)`
-  rather than `stat()`; `errno` checked by value (`ENOENT`/`EACCES`), never
-  by `strerror()`. Added `<errno.h>` and `<stdio.h>` includes.
-- `.github/workflows/slsa.yml` — SLSA Level 3 provenance workflow. Three jobs:
-  `build` (nob.c → binary, `openssl dgst -sha256`), `provenance`
-  (slsa-framework/slsa-github-generator generic L3 reusable workflow, attaches
-  `odoo-mcp-server.intoto.jsonl` to release), `verify` (slsa-verifier quality
-  gate feeding `policy/slsa.rego` via OPA eval). `net.matrix` CMDB env vars
-  present on all jobs. Signing note documents Option B (step-ca OIDC → cosign)
-  as DPS production target; Option C (Sigstore public Fulcio/Rekor) active for
-  this public OSS repo until step-ca quadlet is live.
+  `slsa_hash_output_path_is_deterministic`). `fopen()`+`fseek(-1,SEEK_END)`
+  pattern; `errno` by value (`ENOENT`/`EACCES`). Added `<errno.h>`,`<stdio.h>`.
+- `.github/workflows/slsa.yml` — SLSA Level 3 provenance workflow.
+- `.github/workflows/ci.yml` — `c_quality` gate step extended: `strings(1)`
+  extraction of `net.matrix.*` from native binary, merged into
+  `c_quality_input.json` fed to OPA. Native binary downloaded explicitly
+  into `build/` in `opa-gate` job.
 
 ---
 

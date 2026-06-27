@@ -345,9 +345,27 @@ jobs:
           pattern: "*-artifacts"
           merge-multiple: true
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: odoo-mcp-native
+          path: build/
+
       - name: c_quality gate
         run: |
-          opa eval -d policy/c_quality.rego -i cppcheck.sarif.json \
+          # Extract net.matrix attribution strings from the native binary.
+          # Feeds binary_strings array into c_quality.rego for attribution gate.
+          strings build/odoo-mcp-server 2>/dev/null \
+            | grep "^net\.matrix\." \
+            | jq -Rs 'split("\n") | map(select(. != ""))' \
+            > binary_strings.json || echo '[]' > binary_strings.json
+
+          # Merge binary_strings into cppcheck SARIF input so c_quality.rego
+          # receives both the SARIF findings and the attribution strings.
+          jq -s '.[0] + {"binary_strings": .[1]}' \
+            cppcheck.sarif.json binary_strings.json \
+            > c_quality_input.json
+
+          opa eval -d policy/c_quality.rego -i c_quality_input.json \
             --fail-defined 'data.odoo_mcp.c_quality.violations[_]' && \
             echo "c_quality: PASS"
 

@@ -145,6 +145,34 @@ violations contains msg if {
          result.ruleId, result.message.text])
 }
 
+# ── net.matrix binary attribution strings ─────────────────────────────── #
+# Verifies that required net.matrix identity strings are present in the
+# compiled binary. Input: binary_strings array produced by CI step:
+#   strings build/odoo-mcp-server | grep "^net\.matrix\." | jq -Rs ...
+#
+# Ensures matrix_id.h volatile strings survived linking and -O2 stripping.
+
+required_matrix_prefixes := {
+    "net.matrix.organization=",
+    "net.matrix.orgunit=",
+    "net.matrix.owner=",
+    "net.matrix.oid=",
+    "net.matrix.application=",
+    "net.matrix.role=",
+    "net.matrix.version=",
+}
+
+binary_has_prefix(prefix) if {
+    some s in input.binary_strings
+    startswith(s, prefix)
+}
+
+violations contains msg if {
+    some prefix in required_matrix_prefixes
+    not binary_has_prefix(prefix)
+    msg := sprintf("binary missing net.matrix attribution string: %v", [prefix])
+}
+
 # ── Summary ───────────────────────────────────────────────────────────────── #
 
 # Count of violations — useful for reporting

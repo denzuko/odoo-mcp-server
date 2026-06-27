@@ -15,16 +15,31 @@
 #define BUILD_FOLDER "build/"
 #define SRC_FOLDER   ""          /* sources at project root */
 
+/* Version — single source of truth for binary strings, MCP handshake,
+ * and net.matrix.version label. Update here only. */
+#define MCP_SERVER_VER    "1.3.0"
+
 /* Build target selection: set by nob.c compile flag
  *   cc nob.c -o nob          → native (no flag)
  *   cc -Dwasm nob.c -o nob   → wasm32-wasi
  * Note: runtime source files use #ifdef __wasm__ (set by -D__wasm__ in CC_EXTRA).
  * nob.c itself uses #ifdef wasm (set by -Dwasm at driver compile time). */
+/* net.matrix identity flags — injected into every compiled binary.
+ * Extractable via strings(1) for change item attribution + attestation.
+ * DPS-constant values defined here; version derived from MCP_SERVER_VER
+ * below so there is exactly one source of truth. */
+#define MATRIX_FLAGS \
+    "-DMATRIX_APPLICATION=\"odoo-mcp-server\"", \
+    "-DMATRIX_ROLE=\"mcp-server\"",             \
+    "-DMATRIX_VERSION=" MCP_SERVER_VER,         \
+    "-DMATRIX_ENVIRONMENT=\"production\""
+
 #ifdef wasm
 #  define TARGET     "odoo-mcp-server.wasm"
 #  define CC_INPUTS  "impl.c", "mcp.c", "odoo.c"
 #  define CC_EXTRA   "--target=wasm32-wasi", "-D__wasm__", \
-                     "-mexec-model=reactor"
+                     "-mexec-model=reactor",               \
+                     MATRIX_FLAGS
 #  define LINK_FLAGS \
     "-Wl,--export=mcp_handle_wasm", \
     "-Wl,--export=mcp_alloc", \
@@ -35,7 +50,8 @@
 #  define TARGET     "odoo-mcp-server"
 #  define CC_INPUTS  "impl.c", "main.c", "mcp.c", "odoo.c", "net.c"
 #  define CC_EXTRA   "-D_FORTIFY_SOURCE=2", "-fstack-protector-strong", \
-                     "-Wpedantic", "-Wno-unused-parameter"
+                     "-Wpedantic", "-Wno-unused-parameter",              \
+                     MATRIX_FLAGS
 #  define LINK_FLAGS /* none */
 #  define LINK_LIBS  "-lkcgi", "-lkcgijson", "-ltls"
 #endif
@@ -49,7 +65,6 @@
 /* MCP protocol version we advertise */
 #define MCP_PROTO_VERSION "2025-03-26"
 #define MCP_SERVER_NAME   "odoo-mcp-server"
-#define MCP_SERVER_VER    "1.0.0"
 
 typedef struct {
     const char *odoo_url;     /* ODOO_URL  — e.g. https://dapla.net  */
