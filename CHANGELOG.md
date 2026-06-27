@@ -10,6 +10,29 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.3.0] — 2026-06-27
+
+### Added
+
+- `policy/slsa.rego` — OPA Rego gate enforcing SLSA provenance attachment
+  on release events and non-zero slsa-verifier exit code. Three deny rules:
+  release without provenance, push to main without provenance workflow
+  triggered, slsa-verifier non-zero exit.
+- `tests.c` — two SLSA provenance path tests (`slsa_binary_output_path_is_deterministic`,
+  `slsa_hash_output_path_is_deterministic`). Use `fopen()`+`fseek(-1,SEEK_END)`
+  rather than `stat()`; `errno` checked by value (`ENOENT`/`EACCES`), never
+  by `strerror()`. Added `<errno.h>` and `<stdio.h>` includes.
+- `.github/workflows/slsa.yml` — SLSA Level 3 provenance workflow. Three jobs:
+  `build` (nob.c → binary, `openssl dgst -sha256`), `provenance`
+  (slsa-framework/slsa-github-generator generic L3 reusable workflow, attaches
+  `odoo-mcp-server.intoto.jsonl` to release), `verify` (slsa-verifier quality
+  gate feeding `policy/slsa.rego` via OPA eval). `net.matrix` CMDB env vars
+  present on all jobs. Signing note documents Option B (step-ca OIDC → cosign)
+  as DPS production target; Option C (Sigstore public Fulcio/Rekor) active for
+  this public OSS repo until step-ca quadlet is live.
+
+---
+
 ## [1.2.0] — 2026-04-29
 
 ### Changed

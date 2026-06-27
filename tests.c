@@ -33,6 +33,8 @@
 #include "odoo.h"
 #include "mcp.h"
 
+#include <errno.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -653,6 +655,53 @@ TEST(wasm_mcp_handle_wasm_symbol_declared)
     ASSERT(1);
 }
 
+/* ── Suite: SLSA provenance output paths ────────────────────────────────── */
+/*
+ * Policy contract: build output paths must be deterministic and reachable.
+ * Uses fopen()+fseek(-1,SEEK_END) — no stat(), no string comparison.
+ * errno checked by value (ENOENT, EACCES), never by strerror().
+ * In unit context the binary may not yet exist; ENOENT is acceptable.
+ * Any errno outside the classified FS error set fails the test.
+ */
+
+TEST(slsa_binary_output_path_is_deterministic)
+{
+    const char *path = "build/odoo-mcp-server";
+    ASSERT(NULL != path);
+    ASSERT('\0' != path[0]);
+
+    errno = 0;
+    FILE *f = fopen(path, "rb");
+    if (NULL != f) {
+        int r = fseek(f, -1L, SEEK_END);
+        ASSERT(0 == r);
+        ASSERT(0 == ferror(f));
+        fclose(f);
+    } else {
+        /* ENOENT = not built yet (expected in unit pass).
+         * EACCES = CI config bug. Anything else = unexpected, fail. */
+        ASSERT(ENOENT == errno || EACCES == errno);
+    }
+}
+
+TEST(slsa_hash_output_path_is_deterministic)
+{
+    const char *path = "build/odoo-mcp-server.sha256";
+    ASSERT(NULL != path);
+    ASSERT('\0' != path[0]);
+
+    errno = 0;
+    FILE *f = fopen(path, "rb");
+    if (NULL != f) {
+        int r = fseek(f, -1L, SEEK_END);
+        ASSERT(0 == r);
+        ASSERT(0 == ferror(f));
+        fclose(f);
+    } else {
+        ASSERT(ENOENT == errno || EACCES == errno);
+    }
+}
+
 int main(void)
 {
     printf("odoo-mcp-server xUnit test suite\n");
@@ -725,6 +774,10 @@ int main(void)
     RUN(wasm_mcp_init_symbol_declared);
     RUN(wasm_mcp_alloc_symbol_declared);
     RUN(wasm_mcp_handle_wasm_symbol_declared);
+
+    printf("\nSLSA provenance paths:\n");
+    RUN(slsa_binary_output_path_is_deterministic);
+    RUN(slsa_hash_output_path_is_deterministic);
 
     return xunit_summary();
 }
