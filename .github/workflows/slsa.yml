@@ -77,6 +77,8 @@ jobs:
   verify:
     needs: [build, provenance]
     runs-on: ubuntu-latest
+    # Only verify on release events — provenance download requires a published release
+    if: github.event_name == 'release'
     steps:
       - uses: actions/checkout@v4
 
